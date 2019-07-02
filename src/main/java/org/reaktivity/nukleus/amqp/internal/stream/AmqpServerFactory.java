@@ -81,6 +81,8 @@ public final class AmqpServerFactory implements StreamFactory
     private final Long2ObjectHashMap<AmqpServerSession> sessions;
     private final MessageFunction<RouteFW> wrapRoute;
 
+    private final BufferPool bufferPool;
+
     public AmqpServerFactory(
         AmqpConfiguration config,
         RouteManager router,
@@ -92,6 +94,7 @@ public final class AmqpServerFactory implements StreamFactory
     {
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
+        this.bufferPool = bufferPool;
         this.supplyInitialId = requireNonNull(supplyInitialId);
         this.supplyReplyId = requireNonNull(supplyReplyId);
         this.supplyTraceId = requireNonNull(supplyTraceId);
@@ -206,16 +209,25 @@ public final class AmqpServerFactory implements StreamFactory
             router.setThrottle(replyId, this::onNetwork);
         }
 
+        private void doReset(
+            long traceId)
+        {
+            final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                .routeId(routeId)
+                .streamId(initialId)
+                .trace(traceId)
+                .build();
+
+            receiver.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
+        }
+
         private void doWindow(
             long traceId,
-            int maxBudget,
-            int minPadding)
+            int initialCredit)
         {
-            final int initialCredit = maxBudget - initialBudget;
             if (initialCredit > 0)
             {
                 initialBudget += initialCredit;
-                initialPadding = Math.max(initialPadding, minPadding);
 
                 final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                     .routeId(routeId)
@@ -238,7 +250,7 @@ public final class AmqpServerFactory implements StreamFactory
             final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(replyId)
-                .trace(decodeTraceId)
+                .trace(supplyTraceId.getAsLong())
                 .groupId(0)
                 .padding(replyPadding)
                 .payload(header, offset, length)
@@ -290,25 +302,33 @@ public final class AmqpServerFactory implements StreamFactory
         private void onBegin(
             BeginFW begin)
         {
-            final long traceId = begin.trace();
-            doBegin(traceId);
+            doBegin(supplyTraceId.getAsLong());
         }
 
         private void onData(
             DataFW data)
         {
-            decodeTraceId = data.trace();
-            final OctetsFW payload = data.payload();
-            final DirectBuffer buffer = payload.buffer();
+            initialBudget -= data.length() + data.padding();
 
-            int offset = payload.offset();
-            int length = payload.sizeof();
-
-            while (length > 0)
+            if (initialBudget < 0)
             {
-                int consumed = decodeState.decode(buffer, offset, length);
-                offset += consumed;
-                length -= consumed;
+                doReset(supplyTraceId.getAsLong());
+            }
+            else
+            {
+                decodeTraceId = data.trace();
+                final OctetsFW payload = data.payload();
+                final DirectBuffer buffer = payload.buffer();
+
+                int offset = payload.offset();
+                int length = payload.sizeof();
+
+                while (length > 0)
+                {
+                    int consumed = decodeState.decode(buffer, offset, length);
+                    offset += consumed;
+                    length -= consumed;
+                }
             }
         }
 
@@ -327,13 +347,13 @@ public final class AmqpServerFactory implements StreamFactory
         private void onWindow(
             WindowFW window)
         {
-            final int connectCredit = window.credit();
+            final int replyCredit = window.credit();
 
-            replyBudget += connectCredit;
+            replyBudget += replyCredit;
             replyPadding += window.padding();
 
-            final long traceId = window.trace();
-            doWindow(traceId, replyBudget, replyPadding);
+            final int initialCredit = bufferPool.slotCapacity() - initialBudget;
+            doWindow(supplyTraceId.getAsLong(), initialCredit);
         }
 
         private void onReset(
