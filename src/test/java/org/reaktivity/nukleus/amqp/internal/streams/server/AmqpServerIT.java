@@ -33,7 +33,7 @@ public class AmqpServerIT
 {
     private final K3poRule k3po = new K3poRule()
         .addScriptRoot("route", "org/reaktivity/specification/nukleus/amqp/control/route")
-        .addScriptRoot("client", "org/reaktivity/specification/amqp/link")
+        .addScriptRoot("client", "org/reaktivity/specification/amqp")
         .addScriptRoot("server", "org/reaktivity/specification/nukleus/amqp/streams");
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
@@ -50,11 +50,21 @@ public class AmqpServerIT
     @Rule
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
 
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/header.exchange/handshake.client" })
+    public void shouldExchangeHeader() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/attach.as.receiver.only/client",
+        "${client}/link/attach.as.receiver.only/client",
         "${server}/connect.as.receiver.only/server" })
     public void shouldConnectAsReceiverOnly() throws Exception
     {
@@ -65,7 +75,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/attach.as.receiver.then.sender/client",
+        "${client}/link/attach.as.receiver.then.sender/client",
         "${server}/connect.as.receiver.then.sender/server" })
     public void shouldConnectAsReceiverThenSender() throws Exception
     {
@@ -76,7 +86,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/attach.as.sender.only/client",
+        "${client}/link/attach.as.sender.only/client",
         "${server}/connect.as.sender.only/server" })
     public void shouldConnectAsSenderOnly() throws Exception
     {
@@ -87,7 +97,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/attach.as.sender.then.receiver/client",
+        "${client}/link/attach.as.sender.then.receiver/client",
         "${server}/connect.as.sender.then.receiver/server" })
     public void shouldConnectAsSenderThenReceiver() throws Exception
     {
@@ -98,7 +108,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/detach.link/client",
+        "${client}/link/detach.link/client",
         "${server}/disconnect.abort/server" })
     public void shouldDisconnectWithAbort() throws Exception
     {
@@ -109,7 +119,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/transfer.to.client.at.least.once/client",
+        "${client}/link/transfer.to.client.at.least.once/client",
         "${server}/send.to.client.at.least.once/server" })
     public void shouldSendToClientAtLeastOnce() throws Exception
     {
@@ -120,7 +130,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/transfer.to.client.at.most.once/client",
+        "${client}/link/transfer.to.client.at.most.once/client",
         "${server}/send.to.client.at.most.once/server" })
     public void shouldSendToClientAtMostOnce() throws Exception
     {
@@ -131,7 +141,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/transfer.to.server.at.least.once/client",
+        "${client}/link/transfer.to.server.at.least.once/client",
         "${server}/send.to.server.at.least.once/server" })
     public void shouldSendToServerAtLeastOnce() throws Exception
     {
@@ -142,7 +152,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/transfer.to.server.at.most.once/client",
+        "${client}/link/transfer.to.server.at.most.once/client",
         "${server}/send.to.server.at.most.once/server" })
     public void shouldSendToServerAtMostOnce() throws Exception
     {
