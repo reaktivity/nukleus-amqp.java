@@ -233,7 +233,7 @@ public final class AmqpServerFactory implements StreamFactory
                     .routeId(routeId)
                     .streamId(initialId)
                     .trace(traceId)
-                    .credit(initialCredit) // TODO
+                    .credit(initialCredit)
                     .padding(initialPadding)
                     .groupId(0)
                     .build();
