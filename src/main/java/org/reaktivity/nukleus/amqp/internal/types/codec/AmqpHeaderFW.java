@@ -76,6 +76,14 @@ public class AmqpHeaderFW extends Flyweight
     }
 
     @Override
+    public AmqpHeaderFW tryWrap(DirectBuffer buffer, int offset, int maxLimit)
+    {
+        super.tryWrap(buffer, offset, maxLimit);
+
+        return this;
+    }
+
+    @Override
     public AmqpHeaderFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
