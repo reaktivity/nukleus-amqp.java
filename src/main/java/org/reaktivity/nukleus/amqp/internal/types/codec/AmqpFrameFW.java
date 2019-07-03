@@ -28,21 +28,23 @@ public class AmqpFrameFW extends Flyweight
 
     private static final int FIELD_SIZE_LENGTH = BitUtil.SIZE_OF_INT;
 
-    private static final int FIELD_OFFSET_DOFF = FIELD_OFFSET_LENGTH + FIELD_SIZE_LENGTH;
+    public static final int FIELD_OFFSET_DOFF = FIELD_OFFSET_LENGTH + FIELD_SIZE_LENGTH;
 
     private static final int FIELD_SIZE_DOFF = BitUtil.SIZE_OF_BYTE;
 
-    private static final int FIELD_OFFSET_TYPE = FIELD_OFFSET_DOFF + FIELD_SIZE_DOFF;
+    public static final int FIELD_OFFSET_TYPE = FIELD_OFFSET_DOFF + FIELD_SIZE_DOFF;
 
     private static final int FIELD_SIZE_TYPE = BitUtil.SIZE_OF_BYTE;
 
-    private static final int FIELD_OFFSET_CHANNEL = FIELD_OFFSET_TYPE + FIELD_SIZE_TYPE;
+    public static final int FIELD_OFFSET_CHANNEL = FIELD_OFFSET_TYPE + FIELD_SIZE_TYPE;
 
     private static final int FIELD_SIZE_CHANNEL = BitUtil.SIZE_OF_SHORT;
 
-    private static final int FIELD_OFFSET_PERFORMATIVE = FIELD_OFFSET_CHANNEL + FIELD_SIZE_CHANNEL;
+    public static final int FIELD_OFFSET_PERFORMATIVE = FIELD_OFFSET_CHANNEL + FIELD_SIZE_CHANNEL;
 
     private static final int FIELD_SIZE_PERFORMATIVE = BitUtil.SIZE_OF_SHORT + BitUtil.SIZE_OF_BYTE;
+
+    public static final int FIELD_OFFSET_PAYLOAD = FIELD_OFFSET_PERFORMATIVE + FIELD_SIZE_PERFORMATIVE;
 
     public int performative()
     {
@@ -59,9 +61,7 @@ public class AmqpFrameFW extends Flyweight
     public AmqpFrameFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
-
         checkLimit(limit(), maxLimit);
-
         return this;
     }
 
