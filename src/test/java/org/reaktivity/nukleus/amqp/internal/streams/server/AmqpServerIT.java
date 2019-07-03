@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.amqp.internal.streams.server;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
+import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_CONTAINER_ID;
 import static org.reaktivity.reaktor.test.ReaktorRule.EXTERNAL_AFFINITY_MASK;
 
 import org.junit.Ignore;
@@ -45,6 +46,7 @@ public class AmqpServerIT
         .counterValuesBufferCapacity(8192)
         .nukleus("amqp"::equals)
         .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
+        .configure(AMQP_CONTAINER_ID.name(), "localhost")
         .clean();
 
     @Rule
