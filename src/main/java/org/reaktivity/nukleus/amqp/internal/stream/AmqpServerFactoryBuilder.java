@@ -23,7 +23,6 @@ import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 
 import org.agrona.MutableDirectBuffer;
-//import org.agrona.collections.Long2ObjectHashMap;
 import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
 import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.route.RouteManager;
@@ -33,7 +32,6 @@ import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
 public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
 {
     private final AmqpConfiguration config;
-//    private final Long2ObjectHashMap<Correlation<?>> correlations;
 
     private RouteManager router;
     private MutableDirectBuffer writeBuffer;
@@ -47,7 +45,6 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
         AmqpConfiguration config)
     {
         this.config = config;
-//        this.correlations = new Long2ObjectHashMap<>();
     }
 
     @Override
