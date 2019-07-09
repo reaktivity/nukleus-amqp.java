@@ -1,0 +1,362 @@
+/*
+ * Copyright 2016-2019 The Reaktivity Project
+ *
+ * The Reaktivity Project licenses this file to you under the Apache License,
+ * version 2.0 (the "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at:
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+scope protocol
+{
+    scope codec
+    {
+        struct AmqpBinaryData
+        {
+            uint16 length;
+            octets[length] bytes;
+        }
+        
+        union AmqpBoolean switch (uint8)
+        {
+            case 0x56: uint8 boolean;
+            case 0x41: uint8 true; // true TODO: default value?
+            case 0x42: uint8 false; // false
+        }
+
+        union AmqpUInt switch (uint8)
+        {
+            case 0x70: uint32 uint;
+            case 0x52: uint8 smalluint;
+            case 0x43: uint8 uIntZero; // uint0 TODO: ideal behavior: case 0x43: ;
+        }
+
+        union AmqpULong switch (uint8)
+        {
+            case 0x80: uint64 ulong;
+            case 0x53: uint8 smallulong;
+            case 0x44: uint8 uLongZero; // ulong0 TODO: ideal behavior: case 0x44: ;
+        }
+
+        union AmqpInt switch (uint8)
+        {
+            case 0x71: int32 int;
+            case 0x54: int8 smallint;
+        }
+
+        union AmqpLong switch (uint8)
+        {
+            case 0x81: int64 long;
+            case 0x55: int8 smalllong;
+        }
+
+        union AmqpBinary switch (uint8)
+        {
+            case 0xa0: protocol::codec::AmqpBinaryData vbin8;
+            case 0xb0: protocol::codec::AmqpBinaryData vbin32;
+        }
+
+        union AmqpString switch (uint8)
+        {
+            case 0xa1: protocol::codec::AmqpBinaryData str8;
+            case 0xb1: protocol::codec::AmqpBinaryData str32;
+        }
+
+        union AmqpSymbol switch (uint8)
+        {
+            case 0xa3: protocol::codec::AmqpBinaryData sym8;
+            case 0xb3: string sym32;
+        }
+
+        union AmqpList switch (uint8)
+        {
+            case 0x45: int8 listZero; // list0 TODO: ideal behavior: case 0x45: ;
+            case 0xc0: protocol::codec::AmqpBinaryData list8;
+            case 0xd0: protocol::codec::AmqpBinaryData list32;
+        }
+
+        union AmqpMap switch (uint8) // TODO: need to set the size of map
+        {
+            case 0xc1: list<protocol::codec::AmqpKeyValue> map8;
+            case 0xd1: list<protocol::codec::AmqpKeyValue> map32;
+        }
+
+        struct AmqpKeyValue
+        {
+            protocol::codec::AmqpSymbol key;
+            protocol::codec::AmqpSymbol value;
+        }
+
+        struct AmqpProperty
+        {
+            protocol::codec::AmqpSymbol key;
+            protocol::codec::AmqpSymbol value; // TODO: not sure about the type
+        }
+
+        // 2.8 Definitions
+        enum AmqpRole
+        {
+            SENDER,
+            RECEIVER
+        }
+
+        enum AmqpSenderSettleMode
+        {
+            UNSETTLED,
+            SETTLED,
+            MIZED
+        }
+
+        enum AmqpReceiverSettleMode
+        {
+            FIRST,
+            SECOND
+        }
+
+        struct Error
+        {
+            protocol::codec::AmqpError condition;
+            protocol::codec::AmqpString description;
+            protocol::codec::AmqpMap info;
+        }
+
+        enum AmqpError // TODO: need to store values associated with names
+        {
+             INTERNAL_ERROR,
+             NOT_FOUND,
+             UNAUTHORIZED_ACCESS,
+             DECODE_ERROR,
+             RESOURCE_LIMIT_EXCEEDED,
+             NOT_ALLOWED,
+             INVALID_FIELD,
+             NOT_IMPLEMENTED,
+             RESOURCE_LOCKED,
+             PRECONDITION_FAILED,
+             RESOURCE_DELETED,
+             ILLEGAL_STATE,
+             FRAME_SIZE_TOO_SMALL
+        }
+
+        // 3.4 Delivery state
+        union AmqpDeliveryState switch (uint8)
+        {
+            case 0x23: protocol::codec::AmqpReceived received;
+            case 0x25: protocol::codec::AmqpRejected rejected;
+            case 0x26: protocol::codec::AmqpReleased released;
+            case 0x27: protocol::codec::AmqpModified modified;
+            case 0x33: protocol::codec::AmqpDeclared declared;
+            case 0x34: protocol::codec::AmqpTransactionalState transactionalState;
+        }
+
+        union AmqpOutcome switch (uint8)
+        {
+            case 0x24: protocol::codec::AmqpAccepted accepted;
+            case 0x25: protocol::codec::AmqpRejected rejected;
+            case 0x26: protocol::codec::AmqpReleased released;
+            case 0x27: protocol::codec::AmqpModified modified;
+            case 0x33: protocol::codec::AmqpDeclared declared;
+        }
+
+        struct AmqpReceived
+        {
+            protocol::codec::AmqpUInt sectionNumber; // required
+            protocol::codec::AmqpULong sectionOffset; // required
+        }
+
+        struct AmqpAccepted
+        {
+            // TODO
+        }
+
+        struct AmqpRejected
+        {
+            protocol::codec::Error error;
+        }
+
+        struct AmqpReleased
+        {
+            // TODO
+        }
+
+        struct AmqpModified
+        {
+            protocol::codec::AmqpBoolean deliveryFailed;
+            protocol::codec::AmqpBoolean undeliverableHere;
+            protocol::codec::AmqpMap messageAnnotations;
+        }
+
+        struct AmqpTransactionalState
+        {
+            protocol::codec::AmqpBinary txnId; // required
+            protocol::codec::AmqpOutcome outcome;
+        }
+
+        // 3.5 Sources and Targets
+        enum AmqpDistributionMode
+        {
+            MOVE,
+            COPY
+        }
+
+        struct AmqpSource
+        {
+            protocol::codec::AmqpString address;
+            protocol::codec::AmqpTerminusDurability durable;
+            protocol::codec::AmqpTerminusExpiryPolicy expiryPolicy;
+            protocol::codec::AmqpUInt timeout;
+            protocol::codec::AmqpBoolean dynamic;
+            protocol::codec::AmqpMap dynamicNodeProperties;
+            protocol::codec::AmqpDistributionMode distributionMode;
+            protocol::codec::AmqpMap filter;
+            protocol::codec::AmqpOutcome defaultOutcome;
+            list<protocol::codec::AmqpSymbol> outcomes;
+            list<protocol::codec::AmqpSymbol> capabilities;
+        }
+
+        struct AmqpTarget
+        {
+            protocol::codec::AmqpString address;
+            protocol::codec::AmqpTerminusDurability durable;
+            protocol::codec::AmqpTerminusExpiryPolicy expiryPolicy;
+            protocol::codec::AmqpUInt timeout;
+            protocol::codec::AmqpBoolean dynamic;
+            protocol::codec::AmqpMap dynamicNodeProperties;
+            list<protocol::codec::AmqpSymbol> capabilities;
+        }
+
+        enum AmqpTerminusDurability
+        {
+            NONE,
+            CONFIGURATION,
+            UNSETTLED_STATE
+        }
+
+        enum AmqpTerminusExpiryPolicy
+        {
+            LINK_DETACH,
+            SESSION_END,
+            CONNECTION_CLOSE,
+            NEVER
+        }
+
+        enum StandardDistributionMode
+        {
+            MOVE,
+            COPY
+        }
+
+        // 2.7 Performatives
+        struct AmqpOpenFrame // TODO: struct requires all the properties --> need optional fields
+        {
+            protocol::codec::AmqpString containerId; // required
+            protocol::codec::AmqpString hostname;
+            protocol::codec::AmqpUInt maxFrameSize;
+            uint16 channelMax;
+            protocol::codec::AmqpUInt idleTimeOut;
+            list<protocol::codec::AmqpSymbol> outgoingLocales;
+            list<protocol::codec::AmqpSymbol> incomingLocales;
+            list<protocol::codec::AmqpSymbol> offeredCapabilities;
+            list<protocol::codec::AmqpSymbol> desiredCapabilities;
+            list<protocol::codec::AmqpProperty> properties;
+        }
+
+        struct AmqpBeginFrame
+        {
+            uint16 remoteChannel;
+            uint32 nextOutgoingId; // required
+            protocol::codec::AmqpUInt incomingWindow; // required
+            protocol::codec::AmqpUInt outgoingWindow; // required
+            protocol::codec::AmqpUInt handleMax;
+            list<protocol::codec::AmqpSymbol> offeredCapabilities;
+            list<protocol::codec::AmqpSymbol> desiredCapabilities;
+            list<protocol::codec::AmqpProperty> properties;
+        }
+
+        struct AmqpAttachFrame
+        {
+            protocol::codec::AmqpString name; // required
+            protocol::codec::AmqpUInt handle; // required
+            protocol::codec::AmqpRole role; // required
+            protocol::codec::AmqpSenderSettleMode sndSettleMode;
+            protocol::codec::AmqpReceiverSettleMode rcvSettleMode;
+            protocol::codec::AmqpSource source;
+            protocol::codec::AmqpTarget target;
+            protocol::codec::AmqpMap unsettled;
+            protocol::codec::AmqpBoolean incompleteUnsettled;
+            protocol::codec::AmqpUInt initialDeliveryCount;
+            protocol::codec::AmqpULong maxMessageSize;
+            list<protocol::codec::AmqpSymbol> offeredCapabilities;
+            list<protocol::codec::AmqpSymbol> desiredCapabilities;
+            list<protocol::codec::AmqpProperty> properties;
+        }
+
+        struct AmqpFlowFrame
+        {
+            protocol::codec::AmqpUInt nextIncomingId;
+            protocol::codec::AmqpUInt incomingWindow; // required
+            protocol::codec::AmqpUInt nextOutgoingId; // required
+            protocol::codec::AmqpUInt outgoingWindow;  // required
+            protocol::codec::AmqpUInt handle;
+            protocol::codec::AmqpUInt deliveryCount;
+            protocol::codec::AmqpUInt linkCredit;
+            protocol::codec::AmqpUInt available;
+            protocol::codec::AmqpBoolean drain;
+            protocol::codec::AmqpBoolean echo;
+            list<protocol::codec::AmqpProperty> properties;
+        }
+
+        struct AmqpTransferFrame
+        {
+            protocol::codec::AmqpUInt handle; // required
+            protocol::codec::AmqpUInt deliveryId;
+            protocol::codec::AmqpBinary deliveryTag;
+            protocol::codec::AmqpMessageFormat messageFormat;
+            protocol::codec::AmqpBoolean settled;
+            protocol::codec::AmqpBoolean more;
+            protocol::codec::AmqpReceiverSettleMode rcvSettleMode;
+            protocol::codec::AmqpDeliveryState state;
+            protocol::codec::AmqpBoolean resume;
+            protocol::codec::AmqpBoolean aborted;
+            protocol::codec::AmqpBoolean batchable;
+        }
+
+        struct AmqpDispositionFrame
+        {
+            protocol::codec::AmqpRole role; // required
+            protocol::codec::AmqpUInt first; // required
+            protocol::codec::AmqpUInt last;
+            protocol::codec::AmqpBoolean settled;
+            protocol::codec::AmqpDeliveryState state;
+            protocol::codec::AmqpBoolean batchable;
+        }
+
+        struct AmqpDetachFrame
+        {
+            protocol::codec::AmqpUInt handle; // required
+            protocol::codec::AmqpBoolean closed;
+            protocol::codec::Error error;
+        }
+
+        struct AmqpEndFrame
+        {
+            protocol::codec::Error error;
+        }
+
+        struct AmqpCloseFrame
+        {
+            protocol::codec::Error error;
+        }
+
+        struct AmqpMessageFormat
+        {
+            octets[3] messageFormat;
+            octets[1] version;
+        }
+    }
+}
