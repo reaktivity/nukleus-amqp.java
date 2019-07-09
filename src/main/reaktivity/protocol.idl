@@ -17,71 +17,77 @@ scope protocol
 {
     scope codec
     {
-        struct AmqpBinaryData
+        struct AmqpBinary8
         {
-            uint16 length;
+            uint8 length;
+            octets[length] bytes;
+        }
+
+        struct AmqpBinary32
+        {
+            uint32 length;
             octets[length] bytes;
         }
         
         union AmqpBoolean switch (uint8)
         {
-            case 0x56: uint8 boolean;
-            case 0x41: uint8 true; // true TODO: default value?
-            case 0x42: uint8 false; // false
+            case 0x56: uint8 booleanType;
+            case 0x41: uint8 trueType; // true TODO: default value?
+            case 0x42: uint8 falseType; // false
         }
 
         union AmqpUInt switch (uint8)
         {
-            case 0x70: uint32 uint;
-            case 0x52: uint8 smalluint;
-            case 0x43: uint8 uIntZero; // uint0 TODO: ideal behavior: case 0x43: ;
+            case 0x70: uint32 uIntType;
+            case 0x52: uint8 smallUIntType;
+            case 0x43: uint8 uIntZeroType; // uint0 TODO: ideal behavior: case 0x43: ;
         }
 
         union AmqpULong switch (uint8)
         {
-            case 0x80: uint64 ulong;
-            case 0x53: uint8 smallulong;
-            case 0x44: uint8 uLongZero; // ulong0 TODO: ideal behavior: case 0x44: ;
+            case 0x80: uint64 ulongType;
+            case 0x53: uint8 smallULongType;
+            case 0x44: uint8 uLongZeroType; // ulong0 TODO: ideal behavior: case 0x44: ;
         }
 
         union AmqpInt switch (uint8)
         {
-            case 0x71: int32 int;
-            case 0x54: int8 smallint;
+            case 0x71: int32 intType;
+            case 0x54: int8 smallIntType;
         }
 
         union AmqpLong switch (uint8)
         {
-            case 0x81: int64 long;
-            case 0x55: int8 smalllong;
+            case 0x81: int64 longType;
+            case 0x55: int8 smallLongType;
         }
 
         union AmqpBinary switch (uint8)
         {
-            case 0xa0: protocol::codec::AmqpBinaryData vbin8;
-            case 0xb0: protocol::codec::AmqpBinaryData vbin32;
+            case 0xa0: protocol::codec::AmqpBinary8 vbin8;
+            case 0xb0: protocol::codec::AmqpBinary32 vbin32;
         }
 
         union AmqpString switch (uint8)
         {
-            case 0xa1: protocol::codec::AmqpBinaryData str8;
-            case 0xb1: protocol::codec::AmqpBinaryData str32;
+            case 0xa1: string str8;
+            case 0xb1: string32 str32; // TODO: string32 not currently supported
         }
 
         union AmqpSymbol switch (uint8)
         {
-            case 0xa3: protocol::codec::AmqpBinaryData sym8;
-            case 0xb3: string sym32;
+            case 0xa3: string sym8;
+            case 0xb3: string32 sym32; // TODO: string32 not currently supported
         }
 
         union AmqpList switch (uint8)
         {
             case 0x45: int8 listZero; // list0 TODO: ideal behavior: case 0x45: ;
-            case 0xc0: protocol::codec::AmqpBinaryData list8;
-            case 0xd0: protocol::codec::AmqpBinaryData list32;
+            case 0xc0: // TODO: need to design
+            case 0xd0: // TODO: need to design
         }
 
-        union AmqpMap switch (uint8) // TODO: need to set the size of map
+        union AmqpMap switch (uint8) // TODO:
         {
             case 0xc1: list<protocol::codec::AmqpKeyValue> map8;
             case 0xd1: list<protocol::codec::AmqpKeyValue> map32;
@@ -126,7 +132,7 @@ scope protocol
             protocol::codec::AmqpMap info;
         }
 
-        enum AmqpError // TODO: need to store values associated with names
+        enum AmqpError // TODO: values are symbol - need to store values associated with names
         {
              INTERNAL_ERROR,
              NOT_FOUND,
@@ -147,8 +153,9 @@ scope protocol
         union AmqpDeliveryState switch (uint8)
         {
             case 0x23: protocol::codec::AmqpReceived received;
+            case 0x24: protocol::codec::AmqpList accepted; // TODO: should be empty list
             case 0x25: protocol::codec::AmqpRejected rejected;
-            case 0x26: protocol::codec::AmqpReleased released;
+            case 0x26: protocol::codec::AmqpList released; // TODO: should be empty list
             case 0x27: protocol::codec::AmqpModified modified;
             case 0x33: protocol::codec::AmqpDeclared declared;
             case 0x34: protocol::codec::AmqpTransactionalState transactionalState;
@@ -156,9 +163,9 @@ scope protocol
 
         union AmqpOutcome switch (uint8)
         {
-            case 0x24: protocol::codec::AmqpAccepted accepted;
+            case 0x24: protocol::codec::AmqpList accepted; // TODO: should be empty list
             case 0x25: protocol::codec::AmqpRejected rejected;
-            case 0x26: protocol::codec::AmqpReleased released;
+            case 0x26: protocol::codec::AmqpList released; // TODO: should be empty list
             case 0x27: protocol::codec::AmqpModified modified;
             case 0x33: protocol::codec::AmqpDeclared declared;
         }
@@ -169,19 +176,14 @@ scope protocol
             protocol::codec::AmqpULong sectionOffset; // required
         }
 
-        struct AmqpAccepted
-        {
-            // TODO
-        }
-
         struct AmqpRejected
         {
             protocol::codec::Error error;
         }
 
-        struct AmqpReleased
+        struct AmqpDeclared
         {
-            // TODO
+            protocol::codec::AmqpBinary txnId; // required
         }
 
         struct AmqpModified
@@ -198,12 +200,6 @@ scope protocol
         }
 
         // 3.5 Sources and Targets
-        enum AmqpDistributionMode
-        {
-            MOVE,
-            COPY
-        }
-
         struct AmqpSource
         {
             protocol::codec::AmqpString address;
@@ -212,7 +208,7 @@ scope protocol
             protocol::codec::AmqpUInt timeout;
             protocol::codec::AmqpBoolean dynamic;
             protocol::codec::AmqpMap dynamicNodeProperties;
-            protocol::codec::AmqpDistributionMode distributionMode;
+            protocol::codec::AmqpStandardDistributionMode distributionMode;
             protocol::codec::AmqpMap filter;
             protocol::codec::AmqpOutcome defaultOutcome;
             list<protocol::codec::AmqpSymbol> outcomes;
@@ -237,7 +233,7 @@ scope protocol
             UNSETTLED_STATE
         }
 
-        enum AmqpTerminusExpiryPolicy
+        enum AmqpTerminusExpiryPolicy // TODO: values are symbol
         {
             LINK_DETACH,
             SESSION_END,
@@ -245,7 +241,7 @@ scope protocol
             NEVER
         }
 
-        enum StandardDistributionMode
+        enum AmqpStandardDistributionMode // TODO: values are symbol
         {
             MOVE,
             COPY
@@ -263,7 +259,7 @@ scope protocol
             list<protocol::codec::AmqpSymbol> incomingLocales;
             list<protocol::codec::AmqpSymbol> offeredCapabilities;
             list<protocol::codec::AmqpSymbol> desiredCapabilities;
-            list<protocol::codec::AmqpProperty> properties;
+            list<protocol::codec::AmqpProperty> properties; // TODO: key is symbol and value can be any
         }
 
         struct AmqpBeginFrame
