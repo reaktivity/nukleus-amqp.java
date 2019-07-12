@@ -17,342 +17,764 @@ scope protocol
 {
     scope codec
     {
-        struct AmqpBinary8
+        variant AmqpDescriptor switch (AmqpType+) as uint64
         {
-            uint8 length;
-            octets[length] bytes;
+            case DESCRIBED: AmqpULong;
         }
 
-        struct AmqpBinary32
+        struct AmqpFrame
         {
-            uint32 length;
-            octets[length] bytes;
-        }
-        
-        union AmqpBoolean switch (uint8)
-        {
-            case 0x56: uint8 booleanType;
-            case 0x41: uint8 trueType; // true TODO: default value?
-            case 0x42: uint8 falseType; // false
+            uint32 size;
+            uint8 doff;
+            uint8 type;
+            uint16 channel;
+            AmqpPerformative performative;
         }
 
-        union AmqpUInt switch (uint8)
+        union AmqpPerformative switch (AmqpDescribedType)
         {
-            case 0x70: uint32 uIntType;
-            case 0x52: uint8 smallUIntType;
-            case 0x43: uint8 uIntZeroType; // uint0 TODO: ideal behavior: case 0x43: ;
+            case OPEN: AmqpOpen open;
+            case BEGIN: AmqpBegin begin;
+            case ATTACH: AmqpAttach attach;
+            case FLOW: AmqpFlow flow;
+            case TRANSFER: AmqpTransfer transfer;
+            case DISPOSITION: AmqpDisposition disposition;
+            case DETACH: AmqpDetach detach;
+            case END: AmqpEnd end;
+            case CLOSE: AmqpClose close;
         }
 
-        union AmqpULong switch (uint8)
+        variant AmqpValue switch (AmqpType)
         {
-            case 0x80: uint64 ulongType;
-            case 0x53: uint8 smallULongType;
-            case 0x44: uint8 uLongZeroType; // ulong0 TODO: ideal behavior: case 0x44: ;
+            case DESCRIBED:
+                AmqpDescribedValue;
+            case NULL:
+                AmqpNull;
+            case BOOLEAN:
+            case TRUE:
+            case FALSE:
+                AmqpBoolean;
+            case UBYTE:
+                AmqpUByte;
+            case USHORT:
+                AmqpUShort;
+            case UINT4:
+            case UINT1:
+            case UINT0:
+                AmqpUInt;
+            case ULONG8:
+            case ULONG1:
+            case ULONG0:
+                AmqpULong;
+            case BYTE:
+                AmqpByte;
+            case SHORT:
+                AmqpShort;
+            case INT4:
+            case INT1:
+                AmqpInt;
+            case LONG8:
+            case LONG1:
+                AmqpLong;
+            case FLOAT:
+                AmqpFloat;
+            case DOUBLE:
+                AmqpDouble;
+            case DECIMAL32:
+                AmqpDecimal32;
+            case DECIMAL64:
+                AmqpDecimal64;
+            case DECIMAL128:
+                AmqpDecimal128;
+            case CHAR:
+                AmqpChar;
+            case TIMESTAMP:
+                AmqpTimestamp;
+            case UUID:
+                AmqpUUId;
+            case BINARY1:
+            case BINARY4:
+                AmqpBinary;
+            case STRING1:
+            case STRING4:
+                AmqpString;
+            case SYMBOL1:
+            case SYMBOL4:
+                AmqpSymbol;
+            case LIST0:
+            case LIST1:
+            case LIST4:
+                AmqpList;
+            case MAP1:
+            case MAP4:
+                AmqpMap;
+            case ARRAY1:
+            case ARRAY4:
+                AmqpArray;
         }
 
-        union AmqpInt switch (uint8)
+        enum AmqpType (uint8)
         {
-            case 0x71: int32 intType;
-            case 0x54: int8 smallIntType;
+            DESCRIBED (0x00),
+            NULL (0x40),
+            BOOLEAN (0x56),
+            TRUE (0x41),
+            FALSE (0x42),
+            UBYTE (0x50),
+            USHORT (0x60),
+            UINT4 (0x70),
+            UINT1 (0x52),
+            UINT0 (0x43),
+            ULONG8 (0x80),
+            ULONG1 (0x53),
+            ULONG0 (0x44),
+            BYTE (0x51),
+            SHORT (0x61),
+            INT4 (0x71),
+            INT1 (0x54),
+            LONG8 (0x81),
+            LONG1 (0x55),
+            FLOAT (0x72),
+            DOUBLE (0x82),
+            DECIMAL32 (0x74),
+            DECIMAL64 (0x84),
+            DECIMAL128 (0x94),
+            CHAR (0x73),
+            TIMESTAMP (0x83),
+            UUID (0x98),
+            BINARY1 (0xa0),
+            BINARY4 (0xb0),
+            STRING1 (0xa1),
+            STRING4 (0xb1),
+            SYMBOL1 (0xa3),
+            SYMBOL4 (0xb3),
+            LIST0 (0x45),
+            LIST1 (0xc0),
+            LIST4 (0xd0),
+            MAP1 (0xc1),
+            MAP4 (0xd1),
+            ARRAY1 (0xe0),
+            ARRAY4 (0xf0)
         }
 
-        union AmqpLong switch (uint8)
+        enum AmqpDescribedType (AmqpDescriptor)
         {
-            case 0x81: int64 longType;
-            case 0x55: int8 smallLongType;
+            OPEN (0x10L),
+            BEGIN (0x11L),
+            ATTACH (0x12L),
+            FLOW (0x13L),
+            TRANSFER (0x14L),
+            DISPOSITION (0x15L),
+            DETACH (0x16L),
+            END (0x17L),
+            CLOSE (0x18L),
+            ERROR (0x1dL),
+            HEADER (0x70L),
+            DELIVERY_ANNOTATIONS (0x71L),
+            MESSAGE_ANNOTATIONS (0x72L),
+            PROPERTIES (0x73L),
+            APPLICATION_PROPERTIES (0x74L),
+            DATA (0x75L),
+            AMQP_SEQUENCE (0x76L),
+            AMQP_VALUE (0x77L),
+            FOOTER (0x78L),
+            RECEIVED (0x23L),
+            ACCEPTED (0x24L),
+            REJECTED (0x25L),
+            RELEASED (0x26L),
+            MODIFIED (0x27L),
+            SOURCE (0x28L),
+            TARGET (0x29L),
+            DELETE_ON_CLOSE (0x2bL),
+            DELETE_ON_NO_LINKS (0x2cL),
+            DELETE_ON_NO_MESSAGES (0x2dL),
+            DELETE_ON_NO_LINKS_OR_MESSAGES (0x2eL),
+            COORDINATOR (0x30L),
+            DECLARE (0x31L),
+            DISCHARGE (0x32L),
+            DECLARED (0x33L),
+            TRANSACTIONAL_STATE (0x34L),
+            SASL_MECHANISMS (0x40L),
+            SASL_INIT (0x41L),
+            SASL_CHALLENGE (0x42L),
+            SASL_RESPONSE (0x43L),
+            SASL_OUTCOME (0x44L),
         }
 
-        union AmqpBinary switch (uint8)
+        // 1.6 primitive type definitions
+        variant AmqpNull switch (AmqpType)
         {
-            case 0xa0: protocol::codec::AmqpBinary8 vbin8;
-            case 0xb0: protocol::codec::AmqpBinary32 vbin32;
+            case NULL: 0;
         }
 
-        union AmqpString switch (uint8)
+        variant AmqpBoolean switch (AmqpType) of uint8
         {
-            case 0xa1: string str8;
-            case 0xb1: string32 str32; // TODO: string32 not currently supported
+            case BOOLEAN: uint8;
+            case TRUE: 1;
+            case FALSE: 0;
         }
 
-        union AmqpSymbol switch (uint8)
+        variant AmqpUByte switch (AmqpType) of uint8
         {
-            case 0xa3: string sym8;
-            case 0xb3: string32 sym32; // TODO: string32 not currently supported
+            case UBYTE: uint8;
         }
 
-        union AmqpList switch (uint8)
+        variant AmqpUShort switch (AmqpType) of uint16
         {
-            case 0x45: int8 listZero; // list0 TODO: ideal behavior: case 0x45: ;
-            case 0xc0: // TODO: need to design
-            case 0xd0: // TODO: need to design
+            case USHORT: uint16;
         }
 
-        union AmqpMap switch (uint8) // TODO:
+        variant AmqpUInt switch (AmqpType) of uint32
         {
-            case 0xc1: list<protocol::codec::AmqpKeyValue> map8;
-            case 0xd1: list<protocol::codec::AmqpKeyValue> map32;
+            case UINT4: uint32;
+            case UINT1: uint8;
+            case UINT0: 0;
         }
 
-        struct AmqpKeyValue
+        variant AmqpULong switch (AmqpType) of uint64
         {
-            protocol::codec::AmqpSymbol key;
-            protocol::codec::AmqpSymbol value;
+            case ULONG8: uint64;
+            case ULONG1: uint8;
+            case ULONG0: 0;
         }
 
-        struct AmqpProperty
+        variant AmqpByte switch (AmqpType) of int8
         {
-            protocol::codec::AmqpSymbol key;
-            protocol::codec::AmqpSymbol value; // TODO: not sure about the type
+            case BYTE: int8;
         }
 
-        // 2.8 Definitions
-        enum AmqpRole
+        variant AmqpShort switch (AmqpType) of int16
         {
-            SENDER,
-            RECEIVER
+            case SHORT: int16;
         }
 
-        enum AmqpSenderSettleMode
+        variant AmqpInt switch (AmqpType) of int32
         {
-            UNSETTLED,
-            SETTLED,
-            MIZED
+            case INT4: int32;
+            case INT1: int8;
         }
 
-        enum AmqpReceiverSettleMode
+        variant AmqpLong switch (AmqpType) of int64
         {
-            FIRST,
-            SECOND
+            case LONG8: int64;
+            case LONG1: int8;
         }
 
-        struct Error
+        variant AmqpFloat switch (AmqpType)
         {
-            protocol::codec::AmqpError condition;
-            protocol::codec::AmqpString description;
-            protocol::codec::AmqpMap info;
+            case FLOAT: octets[4];
         }
 
-        enum AmqpError // TODO: values are symbol - need to store values associated with names
+        variant AmqpDouble switch (AmqpType)
         {
-             INTERNAL_ERROR,
-             NOT_FOUND,
-             UNAUTHORIZED_ACCESS,
-             DECODE_ERROR,
-             RESOURCE_LIMIT_EXCEEDED,
-             NOT_ALLOWED,
-             INVALID_FIELD,
-             NOT_IMPLEMENTED,
-             RESOURCE_LOCKED,
-             PRECONDITION_FAILED,
-             RESOURCE_DELETED,
-             ILLEGAL_STATE,
-             FRAME_SIZE_TOO_SMALL
+            case DOUBLE: octets[8];
         }
 
-        // 3.4 Delivery state
-        union AmqpDeliveryState switch (uint8)
+        variant AmqpDecimal32 switch (AmqpType)
         {
-            case 0x23: protocol::codec::AmqpReceived received;
-            case 0x24: protocol::codec::AmqpList accepted; // TODO: should be empty list
-            case 0x25: protocol::codec::AmqpRejected rejected;
-            case 0x26: protocol::codec::AmqpList released; // TODO: should be empty list
-            case 0x27: protocol::codec::AmqpModified modified;
-            case 0x33: protocol::codec::AmqpDeclared declared;
-            case 0x34: protocol::codec::AmqpTransactionalState transactionalState;
+            case DECIMAL32: octets[4];
         }
 
-        union AmqpOutcome switch (uint8)
+        variant AmqpDecimal64 switch (AmqpType)
         {
-            case 0x24: protocol::codec::AmqpList accepted; // TODO: should be empty list
-            case 0x25: protocol::codec::AmqpRejected rejected;
-            case 0x26: protocol::codec::AmqpList released; // TODO: should be empty list
-            case 0x27: protocol::codec::AmqpModified modified;
-            case 0x33: protocol::codec::AmqpDeclared declared;
+            case DECIMAL64: octets[8];
         }
 
-        struct AmqpReceived
+        variant AmqpDecimal128 switch (AmqpType)
         {
-            protocol::codec::AmqpUInt sectionNumber; // required
-            protocol::codec::AmqpULong sectionOffset; // required
+            case DECIMAL128: octets[16];
         }
 
-        struct AmqpRejected
+        variant AmqpChar switch (AmqpType)
         {
-            protocol::codec::Error error;
+            case CHAR: octets[4];
         }
 
-        struct AmqpDeclared
+        variant AmqpTimestamp switch (AmqpType)
         {
-            protocol::codec::AmqpBinary txnId; // required
+            case TIMESTAMP: int64;
         }
 
-        struct AmqpModified
+        variant AmqpUUId switch (AmqpType)
         {
-            protocol::codec::AmqpBoolean deliveryFailed;
-            protocol::codec::AmqpBoolean undeliverableHere;
-            protocol::codec::AmqpMap messageAnnotations;
+            case UUID: string16;
         }
 
-        struct AmqpTransactionalState
+        variant AmqpBinary switch (AmqpType)
         {
-            protocol::codec::AmqpBinary txnId; // required
-            protocol::codec::AmqpOutcome outcome;
+            case BINARY1: octets[uint8];
+            case BINARY4: octets[uint32];
         }
 
-        // 3.5 Sources and Targets
-        struct AmqpSource
+        variant AmqpString switch (AmqpType) of string32
         {
-            protocol::codec::AmqpString address;
-            protocol::codec::AmqpTerminusDurability durable;
-            protocol::codec::AmqpTerminusExpiryPolicy expiryPolicy;
-            protocol::codec::AmqpUInt timeout;
-            protocol::codec::AmqpBoolean dynamic;
-            protocol::codec::AmqpMap dynamicNodeProperties;
-            protocol::codec::AmqpStandardDistributionMode distributionMode;
-            protocol::codec::AmqpMap filter;
-            protocol::codec::AmqpOutcome defaultOutcome;
-            list<protocol::codec::AmqpSymbol> outcomes;
-            list<protocol::codec::AmqpSymbol> capabilities;
+            case STRING1: string;
+            case STRING4: string32;
         }
 
-        struct AmqpTarget
+        variant AmqpSymbol switch (AmqpType) of string32
         {
-            protocol::codec::AmqpString address;
-            protocol::codec::AmqpTerminusDurability durable;
-            protocol::codec::AmqpTerminusExpiryPolicy expiryPolicy;
-            protocol::codec::AmqpUInt timeout;
-            protocol::codec::AmqpBoolean dynamic;
-            protocol::codec::AmqpMap dynamicNodeProperties;
-            list<protocol::codec::AmqpSymbol> capabilities;
+            case SYMBOL1: string;
+            case SYMBOL4: string32;
         }
 
-        enum AmqpTerminusDurability
+        variant AmqpList switch (AmqpType) of list
         {
-            NONE,
-            CONFIGURATION,
-            UNSETTLED_STATE
+            case LIST4: list[uint32, uint32];
+            case LIST1: list[uint8, uint8];
+            case LIST0: list[0, 0];
         }
 
-        enum AmqpTerminusExpiryPolicy // TODO: values are symbol
+        variant AmqpMap switch (AmqpType) of map
         {
-            LINK_DETACH,
-            SESSION_END,
-            CONNECTION_CLOSE,
-            NEVER
+            case MAP4: map[uint32];
+            case MAP1: map[uint8];
         }
 
-        enum AmqpStandardDistributionMode // TODO: values are symbol
+        variant AmqpArray switch (AmqpType) of array
         {
-            MOVE,
-            COPY
+            case ARRAY4: array[uint32, uint32];
+            case ARRAY1: array[uint8, uint8];
         }
 
         // 2.7 Performatives
-        struct AmqpOpenFrame // TODO: struct requires all the properties --> need optional fields
+        list AmqpOpen (AmqpList)
         {
-            protocol::codec::AmqpString containerId; // required
-            protocol::codec::AmqpString hostname;
-            protocol::codec::AmqpUInt maxFrameSize;
-            uint16 channelMax;
-            protocol::codec::AmqpUInt idleTimeOut;
-            list<protocol::codec::AmqpSymbol> outgoingLocales;
-            list<protocol::codec::AmqpSymbol> incomingLocales;
-            list<protocol::codec::AmqpSymbol> offeredCapabilities;
-            list<protocol::codec::AmqpSymbol> desiredCapabilities;
-            list<protocol::codec::AmqpProperty> properties; // TODO: key is symbol and value can be any
+            required AmqpString containerId;
+            AmqpString hostname;
+            AmqpUInt maxFrameSize;
+            AmqpUShort channelMax;
+            AmqpMilliseconds idleTimeOut;
+            AmqpArray<AmqpIETFLanguageTag> outgoingLocales;
+            AmqpArray<AmqpIETFLanguageTag> incomingLocales;
+            AmqpArray<AmqpSymbol> offeredCapabilities;
+            AmqpArray<AmqpSymbol> desiredCapabilities;
+            AmqpFields<AmqpValue> properties;
         }
 
-        struct AmqpBeginFrame
+        list AmqpBegin (AmqpList)
         {
-            uint16 remoteChannel;
-            uint32 nextOutgoingId; // required
-            protocol::codec::AmqpUInt incomingWindow; // required
-            protocol::codec::AmqpUInt outgoingWindow; // required
-            protocol::codec::AmqpUInt handleMax;
-            list<protocol::codec::AmqpSymbol> offeredCapabilities;
-            list<protocol::codec::AmqpSymbol> desiredCapabilities;
-            list<protocol::codec::AmqpProperty> properties;
+            AmqpUShort remoteChannel;
+            required AmqpTransferNumber nextOutgoingId;
+            required AmqpUInt incomingWindow;
+            required AmqpUInt outgoingWindow;
+            AmqpHandle handleMax;
+            AmqpArray<AmqpSymbol> offeredCapabilities;
+            AmqpArray<AmqpSymbol> desiredCapabilities;
+            AmqpFields<AmqpValue> properties;
         }
 
-        struct AmqpAttachFrame
+        list AmqpAttach (AmqpList)
         {
-            protocol::codec::AmqpString name; // required
-            protocol::codec::AmqpUInt handle; // required
-            protocol::codec::AmqpRole role; // required
-            protocol::codec::AmqpSenderSettleMode sndSettleMode;
-            protocol::codec::AmqpReceiverSettleMode rcvSettleMode;
-            protocol::codec::AmqpSource source;
-            protocol::codec::AmqpTarget target;
-            protocol::codec::AmqpMap unsettled;
-            protocol::codec::AmqpBoolean incompleteUnsettled;
-            protocol::codec::AmqpUInt initialDeliveryCount;
-            protocol::codec::AmqpULong maxMessageSize;
-            list<protocol::codec::AmqpSymbol> offeredCapabilities;
-            list<protocol::codec::AmqpSymbol> desiredCapabilities;
-            list<protocol::codec::AmqpProperty> properties;
+            required AmqpString name;
+            required AmqpHandle handle;
+            required AmqpRole role;
+            AmqpSenderSettleMode sndSettleMode;
+            AmqpReceiverSettleMode rcvSettleMode;
+            AmqpSource source;
+            AmqpTarget target;
+            AmqpMap unsettled;
+            AmqpBoolean incompleteUnsettled;
+            AmqpSequenceNo initialDeliveryCount;
+            AmqpULong maxMessageSize;
+            AmqpArray<AmqpSymbol> offeredCapabilities;
+            AmqpArray<AmqpSymbol> desiredCapabilities;
+            AmqpFields<AmqpValue> properties;
         }
 
-        struct AmqpFlowFrame
+        list AmqpFlow (AmqpList)
         {
-            protocol::codec::AmqpUInt nextIncomingId;
-            protocol::codec::AmqpUInt incomingWindow; // required
-            protocol::codec::AmqpUInt nextOutgoingId; // required
-            protocol::codec::AmqpUInt outgoingWindow;  // required
-            protocol::codec::AmqpUInt handle;
-            protocol::codec::AmqpUInt deliveryCount;
-            protocol::codec::AmqpUInt linkCredit;
-            protocol::codec::AmqpUInt available;
-            protocol::codec::AmqpBoolean drain;
-            protocol::codec::AmqpBoolean echo;
-            list<protocol::codec::AmqpProperty> properties;
+            AmqpTransferNumber nextIncomingId;
+            required AmqpUInt incomingWindow;
+            required AmqpTransferNumber nextOutgoingId;
+            required AmqpUInt outgoingWindow;
+            AmqpHandle handle;
+            AmqpSequenceNo deliveryCount;
+            AmqpUInt linkCredit;
+            AmqpUInt available;
+            AmqpBoolean drain;
+            AmqpBoolean echo;
+            AmqpFields properties;
         }
 
-        struct AmqpTransferFrame
+        list AmqpTransfer (AmqpList)
         {
-            protocol::codec::AmqpUInt handle; // required
-            protocol::codec::AmqpUInt deliveryId;
-            protocol::codec::AmqpBinary deliveryTag;
-            protocol::codec::AmqpMessageFormat messageFormat;
-            protocol::codec::AmqpBoolean settled;
-            protocol::codec::AmqpBoolean more;
-            protocol::codec::AmqpReceiverSettleMode rcvSettleMode;
-            protocol::codec::AmqpDeliveryState state;
-            protocol::codec::AmqpBoolean resume;
-            protocol::codec::AmqpBoolean aborted;
-            protocol::codec::AmqpBoolean batchable;
+            required AmqpHandle handle;
+            AmqpDeliveryNumber deliveryId;
+            AmqpDeliveryTag deliveryTag;
+            AmqpMessageFormat messageFormat;
+            AmqpBoolean settled;
+            AmqpBoolean more;
+            AmqpReceiverSettleMode rcvSettleMode;
+            AmqpDeliveryState state;
+            AmqpBoolean resume;
+            AmqpBoolean aborted;
+            AmqpBoolean batchable;
         }
 
-        struct AmqpDispositionFrame
+        list AmqpDisposition (AmqpList)
         {
-            protocol::codec::AmqpRole role; // required
-            protocol::codec::AmqpUInt first; // required
-            protocol::codec::AmqpUInt last;
-            protocol::codec::AmqpBoolean settled;
-            protocol::codec::AmqpDeliveryState state;
-            protocol::codec::AmqpBoolean batchable;
+            required AmqpRole role;
+            required AmqpDeliveryNumber first;
+            AmqpDeliveryNumber last;
+            AmqpBoolean settled;
+            AmqpDeliveryState state;
+            AmqpBoolean batchable;
         }
 
-        struct AmqpDetachFrame
+        list AmqpDetach (AmqpList)
         {
-            protocol::codec::AmqpUInt handle; // required
-            protocol::codec::AmqpBoolean closed;
-            protocol::codec::Error error;
+            required AmqpHandle handle;
+            AmqpBoolean closed;
+            Error error;
         }
 
-        struct AmqpEndFrame
+        list AmqpEnd (AmqpList)
         {
-            protocol::codec::Error error;
+            Error error;
         }
 
-        struct AmqpCloseFrame
+        list AmqpClose (AmqpList)
         {
-            protocol::codec::Error error;
+            Error error;
         }
 
-        struct AmqpMessageFormat
+        // 2.8 Definitions
+        enum AmqpRole (AmqpBoolean)
         {
-            octets[3] messageFormat;
-            octets[1] version;
+            SENDER (0),
+            RECEIVER (1)
+        }
+
+        enum AmqpSenderSettleMode (AmqpUByte)
+        {
+            UNSETTLED (0),
+            SETTLED (1),
+            MIZED (2)
+        }
+
+        enum AmqpReceiverSettleMode (AmqpUByte)
+        {
+            FIRST (0),
+            SECOND (1)
+        }
+
+        typedef AmqpUInt as AmqpHandle;
+        typedef AmqpUInt as AmqpSeconds;
+        typedef AmqpUInt as AmqpMilliseconds;
+        typedef AmqpBinary as AmqpDeliveryTag;
+        typedef AmqpSequenceNo as AmqpDeliveryNumber;
+        typedef AmqpSequenceNo as AmqpTransferNumber;
+        typedef AmqpUInt as AmqpSequenceNo;
+        typedef AmqpUInt as AmqpMessageFormat;
+        typedef AmqpSymbol as AmqpIETFLanguageTag;
+        typedef AmqpMap<AmqpSymbol, V> as AmqpFields<V>;
+
+        list ErrorList (AmqpList)
+        {
+            required AmqpErrorType condition;
+            AmqpString description;
+            AmqpFields info;
+        }
+
+        variant AmqpError switch (AmqpDescribedType+)
+        {
+            case ERROR: ErrorList;
+        }
+
+        enum AmqpErrorType (AmqpSymbol)
+        {
+            INTERNAL_ERROR ("amqp:internal-error"),
+            NOT_FOUND ("amqp:not-found"),
+            UNAUTHORIZED_ACCESS ("amqp:unauthorized-access"),
+            DECODE_ERROR ("amqp:decode-error"),
+            RESOURCE_LIMIT_EXCEEDED ("amqp:resource-limit-exceeded"),
+            NOT_ALLOWED ("amqp:not-allowed"),
+            INVALID_FIELD ("amqp:invalid-field"),
+            NOT_IMPLEMENTED ("amqp:not-implemented"),
+            RESOURCE_LOCKED ("amqp:resource-locked"),
+            PRECONDITION_FAILED ("amqp:precondition-failed"),
+            RESOURCE_DELETED ("amqp:resource-deleted"),
+            ILLEGAL_STATE ("amqp:illegal-state"),
+            FRAME_SIZE_TOO_SMALL ("amqp:frame-size-too-small"),
+            CONNECTION_FORCED ("amqp:connection:forced"),
+            CONNECTION_FRAMING_ERROR ("amqp:connection:framing-error"),
+            CONNECTION_REDIRECT ("amqp:connection:redirect"),
+            SESSION_WINDOW_VIOLATION ("amqp:session:window-violation"),
+            SESSION_ERRANT_LINK ("amqp:session:errant-link"),
+            SESSION_HANDLE_IN_USE ("amqp:session:handle-in-use"),
+            SESSION_UNATTACHED_HANDLE ("amqp:session:unattached-handle"),
+            LINK_DETACH_FORCED ("amqp:link:detach-forced"),
+            LINK_TRANSFER_LIMIT_EXCEEDED ("amqp:link:transfer-limit-exceeded"),
+            LINK_MESSAGE_SIZE_EXCEEDED ("amqp:link:message-size-exceeded"),
+            LINK_REDIRECT ("amqp:link:redirect"),
+            LINK_STOLEN ("amqp:link:stolen"),
+            TRANSACTION_UNKNOWN_ID ("amqp:transaction:unknown-id"),
+            TRANSACTION_ROLLBACK ("amqp:transaction:rollback"),
+            TRANSACTION_TIMEOUT ("amqp:transaction:timeout")
+        }
+
+        // 3.2 Message Format
+        union AmqpSection switch (AmqpDescribedType)
+        {
+            case HEADER: AmqpHeader header;
+            case DELIVERY_ANNOTATIONS: AmqpMap deliveryAnnotations;
+            case MESSAGE_ANNOTATIONS: AmqpMap messageAnnotations;
+            case PROPERTIES: AmqpProperties properties;
+            case APPLICATION_PROPERTIES: AmqpMap applicationProperties;
+            case DATA: AmqpBinary data;
+            case AMQP_SEQUENCE: AmqpList amqpSequence;
+            case AMQP_VALUE: AmqpValue amqpValue;
+            case FOOTER: AmqpMap footer;
+        }
+
+        list AmqpHeader (AmqpList)
+        {
+            AmqpBoolean durable;
+            AmqpUByte priority;
+            AmqpMilliseconds ttl;
+            AmqpBoolean firstAcquirer;
+            AmqpUInt deliveryCount;
+        }
+
+        list AmqpProperties (AmqpList)
+        {
+            AmqpMessageId messageId;
+            AmqpBinary userId;
+            AmqpAddress to;
+            AmqpString subject;
+            AmqpAddress replyTo;
+            AmqpMessageId correlationId;
+            AmqpSymbol contentType;
+            AmqpSymbol contentEncoding;
+            AmqpTimestamp absoluteExpiryTime;
+            AmqpTimestamp creationTime;
+            AmqpString groupId;
+            AmqpSequenceNo group-sequence;
+            AmqpString replyToGroupId;
+        }
+
+        variant AmqpMessageId switch (AmqpType)
+        {
+            case ULONG8:
+            case ULONG1:
+            case ULONG0:
+                AmqpULong;
+            case UUID:
+                AmqpUUId;
+            case BINARY1:
+            case BINARY4:
+                AmqpBinary;
+            case STRING1:
+            case STRING4:
+                AmqpString;
+        }
+
+        typedef AmqpString as AmqpAddress;
+
+        // 3.4 Delivery state
+        union AmqpDeliveryState switch (AmqpDescribedType)
+        {
+            case RECEIVED: AmqpReceived received;
+            case ACCEPTED: AmqpList accepted;
+            case REJECTED: AmqpRejected rejected;
+            case RELEASED: AmqpReleased AmqpList;
+            case MODIFIED: AmqpModified modified;
+            case DECLARED: AmqpDeclared declared;
+            case TRANSACTIONAL_STATE: AmqpTransactionalState transactionalState;
+        }
+
+        union AmqpOutcome switch (AmqpDescribedType)
+        {
+            case ACCEPTED: AmqpList accepted;
+            case REJECTED: AmqpRejected rejected;
+            case RELEASED: AmqpReleased AmqpList;
+            case MODIFIED: AmqpModified modified;
+            case DECLARED: AmqpDeclared declared;
+        }
+
+        list AmqpReceived (AmqpList)
+        {
+            required AmqpUInt sectionNumber;
+            required AmqpULong sectionOffset;
+        }
+
+        list AmqpRejected (AmqpList)
+        {
+            Error error;
+        }
+
+        list AmqpModified (AmqpList)
+        {
+            AmqpBoolean deliveryFailed;
+            AmqpBoolean undeliverableHere;
+            AmqpFields<AmqpValue> messageAnnotations;
+        }
+
+        // 3.5 Sources and Targets
+        list AmqpSourceList (AmqpList)
+        {
+            AmqpAddress address;
+            AmqpTerminusDurability durable;
+            AmqpTerminusExpiryPolicy expiryPolicy;
+            AmqpSeconds timeout;
+            AmqpBoolean dynamic;
+            AmqpNodeProperties dynamicNodeProperties;
+            AmqpStandardDistributionMode distributionMode;
+            AmqpFilterSet filter;
+            AmqpOutcome defaultOutcome;
+            AmqpArray<AmqpSymbol> outcomes;
+            AmqpArray<AmqpSymbol> capabilities;
+        }
+
+        variant AmqpSource switch (AmqpDescribedType+)
+        {
+            case SOURCE: AmqpSourceList;
+        }
+
+        union AmqpTarget switch (AmqpDescribedType)
+        {
+            case TARGET: AmqpTargetList targetList;
+            case COORDINATOR: AmqpCoordinator coordinatorList;
+        }
+
+        list AmqpTargetList (AmqpList)
+        {
+            AmqpAddress address;
+            AmqpTerminusDurability durable;
+            AmqpTerminusExpiryPolicy expiryPolicy;
+            AmqpSeconds timeout;
+            AmqpBoolean dynamic;
+            AmqpNodeProperties dynamicNodeProperties;
+            AmqpArray<AmqpSymbol> capabilities;
+        }
+
+        enum AmqpTerminusDurability (uint8)
+        {
+            NONE (0),
+            CONFIGURATION (1),
+            UNSETTLED_STATE (2)
+        }
+
+        enum AmqpTerminusExpiryPolicy (AmqpSymbol)
+        {
+            LINK_DETACH ("link-detach"),
+            SESSION_END ("session-end"),
+            CONNECTION_CLOSE ("connection-close"),
+            NEVER ("never")
+        }
+
+        enum AmqpStandardDistributionMode (AmqpSymbol)
+        {
+            MOVE ("move"),
+            COPY ("copy")
+        }
+
+        typedef AmqpMap as AmqpFilterSet;
+        typedef AmqpFields as AmqpNodeProperties;
+
+        union AmqpLifetimePolicy switch (AmqpDescribedType)
+        {
+            case DELETE_ON_CLOSE: AmqpList deleteOnClose;
+            case DELETE_ON_NO_LINKS: AmqpList deleteOnNoLinks;
+            case DELETE_ON_NO_MESSAGES: AmqpList deleteOnNoMessages;
+            case DELETE_ON_NO_LINKS_OR_MESSAGES: AmqpList deleteOnNoLinksOrMessages;
+        }
+
+        // 4.5 Coordination
+        list AmqpCoordinator (AmqpList)
+        {
+            AmqpArray<AmqpTransactionCapability> capabilities;
+        }
+
+        list AmqpDeclareList (AmqpList)
+        {
+            AmqpTxnId globalId;
+        }
+
+        variant AmqpDeclare switch (AmqpDescribedType+)
+        {
+            case DECLARE: AmqpDeclareList;
+        }
+
+        list AmqpDischargeList (AmqpList)
+        {
+            required AmqpTxnId txnId;
+            AmqpBoolean fail;
+        }
+
+        variant AmqpDischarge switch (AmqpDescribedType+)
+        {
+            case DISCHARGE: AmqpDischargeList;
+        }
+
+        typedef AmqpBinary as AmqpTxnId;
+
+        list AmqpDeclared (AmqpList)
+        {
+            required AmqpTxnId txnId;
+        }
+
+        list AmqpTransactionalState (AmqpList)
+        {
+            required AmqpBinary txnId;
+            AmqpOutcome outcome;
+        }
+
+        enum AmqpTransactionCapability (AmqpSymbol)
+        {
+            LOCAL_TRANSACTIONS ("amqp:local-transactions"),
+            DISTRIBUTED_TRANSACTIONS ("amqp:distributed-transactions"),
+            PROMOTABLE_TRANSACTIONS ("amqp:promotable-transactions"),
+            MULTI_TXNS_PER_SSN ("amqp:multi-txns-per-ssn"),
+            MULTI_SSNS_PER_TXN ("amqp:multi-ssns-per-txn")
+        }
+
+        // 5.3 Security Frame Bodies
+        union AmqpSaslFrame switch (AmqpDescribedType)
+        {
+            case SASL_MECHANISMS: AmqpSaslMechanisms saslMechanisms;
+            case SASL_INIT: AmqpSaslInit saslInit;
+            case SASL_CHALLENGE: AmqpSaslChallenge saslChallenge;
+            case SASL_RESPONSE: AmqpSaslResponse saslResponse;
+            case SASL_OUTCOME: AmqpSaslOutcome saslOutcome;
+        }
+
+        list AmqpSaslMechanisms (AmqpList)
+        {
+            required AmqpArray<AmqpSymbol> saslServerMechanisms;
+        }
+
+        list AmqpSaslInit (AmqpList)
+        {
+            required AmqpSymbol mechanism;
+            AmqpBinary initialResponse;
+            AmqpString hostname;
+        }
+
+        list AmqpSaslChallenge (AmqpList)
+        {
+            required AmqpBinary challenge;
+        }
+
+        list AmqpSaslResponse (AmqpList)
+        {
+            required AmqpBinary response;
+        }
+
+        list AmqpSaslOutcome (AmqpList)
+        {
+            required AmqpSaslCode code;
+            AmqpBinary additionalData;
+        }
+
+        enum AmqpSaslCode (AmqpUByte)
+        {
+            OK (0),
+            AUTH (1),
+            SYS (2),
+            SYS_PERM (3),
+            SYS_TEMP (4)
         }
     }
 }
