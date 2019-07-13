@@ -175,8 +175,8 @@ scope protocol
             PROPERTIES (0x73L),
             APPLICATION_PROPERTIES (0x74L),
             DATA (0x75L),
-            AMQP_SEQUENCE (0x76L),
-            AMQP_VALUE (0x77L),
+            SEQUENCE (0x76L),
+            VALUE (0x77L),
             FOOTER (0x78L),
             RECEIVED (0x23L),
             ACCEPTED (0x24L),
@@ -320,8 +320,8 @@ scope protocol
 
         variant AmqpList switch (AmqpType) of list
         {
-            case LIST4: list[uint32, uint32];
-            case LIST1: list[uint8, uint8];
+            case LIST4: list[uint32, uint32, 0x40];
+            case LIST1: list[uint8, uint8, 0x40];
             case LIST0: list[0, 0];
         }
 
@@ -470,7 +470,7 @@ scope protocol
         typedef AmqpSymbol as AmqpIETFLanguageTag;
         typedef AmqpMap<AmqpSymbol, V> as AmqpFields<V>;
 
-        list ErrorList (AmqpList)
+        list AmqpErrorList (AmqpList)
         {
             required AmqpErrorType condition;
             AmqpString description;
@@ -479,7 +479,7 @@ scope protocol
 
         variant AmqpError switch (AmqpDescribedType+)
         {
-            case ERROR: ErrorList;
+            case ERROR: AmqpErrorList;
         }
 
         enum AmqpErrorType (AmqpSymbol)
@@ -497,18 +497,22 @@ scope protocol
             RESOURCE_DELETED ("amqp:resource-deleted"),
             ILLEGAL_STATE ("amqp:illegal-state"),
             FRAME_SIZE_TOO_SMALL ("amqp:frame-size-too-small"),
+
             CONNECTION_FORCED ("amqp:connection:forced"),
             CONNECTION_FRAMING_ERROR ("amqp:connection:framing-error"),
             CONNECTION_REDIRECT ("amqp:connection:redirect"),
+
             SESSION_WINDOW_VIOLATION ("amqp:session:window-violation"),
             SESSION_ERRANT_LINK ("amqp:session:errant-link"),
             SESSION_HANDLE_IN_USE ("amqp:session:handle-in-use"),
             SESSION_UNATTACHED_HANDLE ("amqp:session:unattached-handle"),
+
             LINK_DETACH_FORCED ("amqp:link:detach-forced"),
             LINK_TRANSFER_LIMIT_EXCEEDED ("amqp:link:transfer-limit-exceeded"),
             LINK_MESSAGE_SIZE_EXCEEDED ("amqp:link:message-size-exceeded"),
             LINK_REDIRECT ("amqp:link:redirect"),
             LINK_STOLEN ("amqp:link:stolen"),
+
             TRANSACTION_UNKNOWN_ID ("amqp:transaction:unknown-id"),
             TRANSACTION_ROLLBACK ("amqp:transaction:rollback"),
             TRANSACTION_TIMEOUT ("amqp:transaction:timeout")
@@ -523,8 +527,8 @@ scope protocol
             case PROPERTIES: AmqpProperties properties;
             case APPLICATION_PROPERTIES: AmqpMap applicationProperties;
             case DATA: AmqpBinary data;
-            case AMQP_SEQUENCE: AmqpList amqpSequence;
-            case AMQP_VALUE: AmqpValue amqpValue;
+            case SEQUENCE: AmqpList amqpSequence;
+            case VALUE: AmqpValue amqpValue;
             case FOOTER: AmqpMap footer;
         }
 
