@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.amqp.internal.stream;
 
 import static java.util.Objects.requireNonNull;
 
+import java.nio.charset.StandardCharsets;
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
 
@@ -76,6 +77,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpDataExFW amqpDataExRO = new AmqpDataExFW();
 
     private final AmqpProtocolHeaderFW amqpProtocolHeaderRO = new AmqpProtocolHeaderFW();
+    private final AmqpProtocolHeaderFW.Builder amqpProtocolHeaderRW = new AmqpProtocolHeaderFW.Builder();
     private final AmqpFrameFW amqpFrameRO = new AmqpFrameFW();
     private final AmqpFrameFW.Builder amqpFrameRW = new AmqpFrameFW.Builder();
 
@@ -86,7 +88,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final LongUnaryOperator supplyReplyId;
     private final LongSupplier supplyTraceId;
 
-    private final Long2ObjectHashMap<AmqpServerConnection> correlations;
+    private final Long2ObjectHashMap<AmqpServer> correlations;
     private final Long2ObjectHashMap<AmqpServerSession> sessions;
     private final MessageFunction<RouteFW> wrapRoute;
 
@@ -151,7 +153,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         if (route != null)
         {
-            final AmqpServerConnection connection = new AmqpServerConnection(sender, routeId, initialId, replyId);
+            final AmqpServer connection = new AmqpServer(sender, routeId, initialId, replyId);
             correlations.put(replyId, connection);
             newStream = connection::onNetwork;
         }
@@ -177,7 +179,7 @@ public final class AmqpServerFactory implements StreamFactory
         return routeRO.wrap(buffer, index, index + length);
     }
 
-    private final class AmqpServerConnection
+    private final class AmqpServer
     {
         private final MessageConsumer receiver;
         private final long routeId;
@@ -194,7 +196,7 @@ public final class AmqpServerFactory implements StreamFactory
         private int bufferSlot = BufferPool.NO_SLOT;
         private int bufferSlotOffset;
 
-        private AmqpServerConnection(
+        private AmqpServer(
             MessageConsumer receiver,
             long routeId,
             long initialId,
@@ -252,18 +254,36 @@ public final class AmqpServerFactory implements StreamFactory
             }
         }
 
-        private void doAmqpHeader(
-            DirectBuffer header,
-            int offset,
-            int length)
+        private void doEnd()
         {
+            final EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                .routeId(routeId)
+                .streamId(replyId)
+                .trace(supplyTraceId.getAsLong())
+                .build();
+            receiver.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
+        }
+
+        private void doAmqpHeader(
+            int major,
+            int minor,
+            int revision)
+        {
+            final AmqpProtocolHeaderFW protocol = amqpProtocolHeaderRW
+                .wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity())
+                .name(n -> n.set("AMQP".getBytes(StandardCharsets.US_ASCII)))
+                .id(0)
+                .major(major)
+                .minor(minor)
+                .revision(revision)
+                .build();
             final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(replyId)
                 .trace(supplyTraceId.getAsLong())
                 .groupId(0)
                 .padding(replyPadding)
-                .payload(header, offset, length)
+                .payload(protocol.buffer(), protocol.offset(), protocol.sizeof())
                 .build();
             receiver.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
         }
@@ -447,14 +467,15 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (header != null)
             {
+                doAmqpHeader(1, 0, 0);
                 if (isAmqpHeaderValid(header))
                 {
-                    doAmqpHeader(header.buffer(), header.offset(), header.limit());
                     decodeState = this::decodeFrame;
                 }
                 else
                 {
-                    // TODO: processInvalidRequest() with specific error code
+                    decodeState = this::decodeInvalid;
+                    doEnd();
                 }
             }
         }
@@ -469,10 +490,10 @@ public final class AmqpServerFactory implements StreamFactory
                 return new String(nameInBytes);
             });
             return name.equals("AMQP")
-                && header.id() == (byte)0x00
-                && header.major() == (byte)0x01
-                && header.minor() == (byte)0x00
-                && header.revision() == (byte)0x00;
+                && header.id() == 0
+                && header.major() == 1
+                && header.minor() == 0
+                && header.revision() == 0;
         }
 
         private void onAmqpOpen(
@@ -541,6 +562,15 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpProtocolHeaderFW protocolHeader = amqpProtocolHeaderRO.tryWrap(buffer, offset, offset + length);
             onAmqpHeader(protocolHeader);
             return protocolHeader == null ? 0 : protocolHeader.sizeof();
+        }
+
+        private int decodeInvalid(
+            DirectBuffer buffer,
+            int offset,
+            int length)
+        {
+            doWindow(supplyTraceId.getAsLong(), length);
+            return length;
         }
 
         private int decodeFrame(
