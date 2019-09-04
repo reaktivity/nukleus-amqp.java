@@ -25,9 +25,16 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameFW;
-import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpHeaderFW;
-import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFrameFW;
-import org.reaktivity.nukleus.amqp.internal.types.stream.*;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpProtocolHeaderFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.AbortFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.AmqpBeginExFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.AmqpDataExFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.BeginFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.DataFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.EndFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.ResetFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.SignalFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
@@ -68,8 +75,7 @@ public final class AmqpServerFactory implements StreamFactory
 
     private final AmqpDataExFW amqpDataExRO = new AmqpDataExFW();
 
-    private final AmqpHeaderFW amqpHeaderRO = new AmqpHeaderFW();
-    private final AmqpHeaderFW.Builder amqpHeaderRW = new AmqpHeaderFW.Builder();
+    private final AmqpProtocolHeaderFW amqpProtocolHeaderRO = new AmqpProtocolHeaderFW();
     private final AmqpFrameFW amqpFrameRO = new AmqpFrameFW();
     private final AmqpFrameFW.Builder amqpFrameRW = new AmqpFrameFW.Builder();
 
@@ -263,7 +269,7 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         private void doAmqpOpen(
-            AmqpOpenFrameFW frame)
+            AmqpFrameFW frame)
         {
             // TODO
 //            final AmqpOpenFrameFW open = amqpOpenFrameRW.wrap(encodeBuffer, 0, encodeBuffer.capacity())
@@ -437,7 +443,7 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         private void onAmqpHeader(
-            AmqpHeaderFW header)
+            AmqpProtocolHeaderFW header)
         {
             if (header != null)
             {
@@ -454,17 +460,23 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         private boolean isAmqpHeaderValid(
-            AmqpHeaderFW header)
+            AmqpProtocolHeaderFW header)
         {
-            return header.protocolHeaderName().equals("AMQP")
-                && header.protocolId() == (byte)0x00
-                && header.protocolVersionMajor() == (byte)0x01
-                && header.protocolVersionMinor() == (byte)0x00
-                && header.protocolVersionRevision() == (byte)0x00;
+            String name = header.name().get((buffer, offset, limit) ->
+            {
+                byte[] nameInBytes = new byte[4];
+                buffer.getBytes(offset, nameInBytes, 0, 4);
+                return new String(nameInBytes);
+            });
+            return name.equals("AMQP")
+                && header.id() == (byte)0x00
+                && header.major() == (byte)0x01
+                && header.minor() == (byte)0x00
+                && header.revision() == (byte)0x00;
         }
 
         private void onAmqpOpen(
-            AmqpOpenFrameFW open)
+            AmqpFrameFW open)
         {
             // TODO
              doAmqpOpen(open);
@@ -526,12 +538,11 @@ public final class AmqpServerFactory implements StreamFactory
             final int offset,
             final int length)
         {
-            final AmqpHeaderFW amqpHeader = amqpHeaderRO.tryWrap(buffer, offset, offset + length);
-            onAmqpHeader(amqpHeader);
-            return amqpHeader == null ? 0 : amqpHeader.sizeof();
+            final AmqpProtocolHeaderFW protocolHeader = amqpProtocolHeaderRO.tryWrap(buffer, offset, offset + length);
+            onAmqpHeader(protocolHeader);
+            return protocolHeader == null ? 0 : protocolHeader.sizeof();
         }
 
-        // TODO
         private int decodeFrame(
             final DirectBuffer buffer,
             final int offset,
@@ -544,33 +555,31 @@ public final class AmqpServerFactory implements StreamFactory
             switch (amqpFrame.performative())
             {
                 case 0x00:
-                    // TODO: final AmqpOpenFrameFW amqpOpenFrame = amqpOpenFrameRO.wrap(buffer,
-                    // offset + FIELD_OFFSET_PAYLOAD, offset + length - FIELD_OFFSET_PAYLOAD);
-                    // onAmqpOpen(amqpOpenFrame);
+                    // TODO: onAmqpOpen()
                     break;
                 case 0x01:
-                    onAmqpBegin(amqpFrame);
+                    // TODO: onAmqpBegin();
                     break;
                 case 0x02:
-                    onAmqpAttach(amqpFrame);
+                    // TODO: onAmqpAttach();
                     break;
                 case 0x03:
-                    onAmqpFlow(amqpFrame);
+                    // TODO: onAmqpFlow();
                     break;
                 case 0x04:
-                    onAmqpTransfer(amqpFrame);
+                    // TODO: onAmqpTransfer();
                     break;
                 case 0x05:
-                    onAmqpDisposition(amqpFrame);
+                    // TODO: onAmqpDisposition();
                     break;
                 case 0x06:
-                    onAmqpDetach(amqpFrame);
+                    // TODO: onAmqpDetach();
                     break;
                 case 0x07:
-                    onAmqpEnd(amqpFrame);
+                    // TODO: onAmqpEnd();
                     break;
                 case 0x08:
-                    onAmqpClose(amqpFrame);
+                    // TODO: onAmqpClose();
                     break;
             }
             return 0; // TODO

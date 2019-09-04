@@ -21,7 +21,7 @@ import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
 
 import org.agrona.BitUtil;
 
-// TODO: Complete this class
+// TODO: Replace with generated class and remove this class
 public class AmqpFrameFW extends Flyweight
 {
     public static final int FIELD_OFFSET_LENGTH = 0;
