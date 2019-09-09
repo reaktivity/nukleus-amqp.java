@@ -16,16 +16,14 @@
 package org.reaktivity.nukleus.amqp.internal;
 
 import static org.reaktivity.nukleus.route.RouteKind.SERVER;
-//import static org.reaktivity.nukleus.route.RouteKind.CLIENT;
-
-import org.reaktivity.nukleus.Elektron;
-import org.reaktivity.nukleus.route.RouteKind;
-//import org.reaktivity.nukleus.amqp.internal.stream.AmqpClientFactoryBuilder;
-import org.reaktivity.nukleus.amqp.internal.stream.AmqpServerFactoryBuilder;
-import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
 
 import java.util.EnumMap;
 import java.util.Map;
+
+import org.reaktivity.nukleus.Elektron;
+import org.reaktivity.nukleus.amqp.internal.stream.AmqpServerFactoryBuilder;
+import org.reaktivity.nukleus.route.RouteKind;
+import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
 
 final class AmqpElektron implements Elektron
 {

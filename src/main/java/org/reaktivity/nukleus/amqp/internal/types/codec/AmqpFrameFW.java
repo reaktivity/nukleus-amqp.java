@@ -15,11 +15,10 @@
  */
 package org.reaktivity.nukleus.amqp.internal.types.codec;
 
+import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
-
-import org.agrona.BitUtil;
 
 // TODO: Replace with generated class and remove this class
 public class AmqpFrameFW extends Flyweight
@@ -93,14 +92,14 @@ public class AmqpFrameFW extends Flyweight
     {
         switch (b & 0x7f)
         {
-            case 0x7e:
-                return 3;
+        case 0x7e:
+            return 3;
 
-            case 0x7f:
-                return 9;
+        case 0x7f:
+            return 9;
 
-            default:
-                return 1;
+        default:
+            return 1;
         }
     }
 }

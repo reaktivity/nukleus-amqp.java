@@ -25,8 +25,11 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
 import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
+import org.reaktivity.nukleus.amqp.internal.types.OctetsFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpProtocolHeaderFW;
+import org.reaktivity.nukleus.amqp.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.AbortFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.AmqpBeginExFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.AmqpDataExFW;
@@ -42,9 +45,6 @@ import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
 import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
-import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
-import org.reaktivity.nukleus.amqp.internal.types.OctetsFW;
-import org.reaktivity.nukleus.amqp.internal.types.control.RouteFW;
 
 public final class AmqpServerFactory implements StreamFactory
 {
@@ -292,24 +292,26 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpFrameFW frame)
         {
             // TODO
-//            final AmqpOpenFrameFW open = amqpOpenFrameRW.wrap(encodeBuffer, 0, encodeBuffer.capacity())
-//                .length(frame.length())
-//                .dof(frame.dof())
-//                .type(frame.type())
-//                .channel(frame.channel())
-//                .performative(frame.performative())
-//                .payload(frame.payload)
-//                .build();
-//
-//            final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-//                .routeId(routeId)
-//                .streamId(replyId)
-//                .trace(supplyTraceId.getAsLong())
-//                .groupId(0)
-//                .padding(replyPadding)
-//                .payload(open.buffer(), open.offset(), open.limit())
-//                .build();
-//            receiver.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+            /*
+            final AmqpOpenFrameFW open = amqpOpenFrameRW.wrap(encodeBuffer, 0, encodeBuffer.capacity())
+                .length(frame.length())
+                .dof(frame.dof())
+                .type(frame.type())
+                .channel(frame.channel())
+                .performative(frame.performative())
+                .payload(frame.payload)
+                .build();
+
+            final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                .routeId(routeId)
+                .streamId(replyId)
+                .trace(supplyTraceId.getAsLong())
+                .groupId(0)
+                .padding(replyPadding)
+                .payload(open.buffer(), open.offset(), open.limit())
+                .build();
+            receiver.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+            */
         }
 
         private void onNetwork(
@@ -320,36 +322,36 @@ public final class AmqpServerFactory implements StreamFactory
         {
             switch (msgTypeId)
             {
-                case BeginFW.TYPE_ID:
-                    final BeginFW begin = beginRO.wrap(buffer, index, index + length);
-                    onBegin(begin);
-                    break;
-                case DataFW.TYPE_ID:
-                    final DataFW data = dataRO.wrap(buffer, index, index + length);
-                    onData(data);
-                    break;
-                case EndFW.TYPE_ID:
-                    final EndFW end = endRO.wrap(buffer, index, index + length);
-                    onEnd(end);
-                    break;
-                case AbortFW.TYPE_ID:
-                    final AbortFW abort = abortRO.wrap(buffer, index, index + length);
-                    onAbort(abort);
-                    break;
-                case WindowFW.TYPE_ID:
-                    final WindowFW window = windowRO.wrap(buffer, index, index + length);
-                    onWindow(window);
-                    break;
-                case ResetFW.TYPE_ID:
-                    final ResetFW reset = resetRO.wrap(buffer, index, index + length);
-                    onReset(reset);
-                    break;
-                case SignalFW.TYPE_ID:
-                    final SignalFW signal = signalRO.wrap(buffer, index, index + length);
-                    onSignal(signal);
-                    break;
-                default:
-                    break;
+            case BeginFW.TYPE_ID:
+                final BeginFW begin = beginRO.wrap(buffer, index, index + length);
+                onBegin(begin);
+                break;
+            case DataFW.TYPE_ID:
+                final DataFW data = dataRO.wrap(buffer, index, index + length);
+                onData(data);
+                break;
+            case EndFW.TYPE_ID:
+                final EndFW end = endRO.wrap(buffer, index, index + length);
+                onEnd(end);
+                break;
+            case AbortFW.TYPE_ID:
+                final AbortFW abort = abortRO.wrap(buffer, index, index + length);
+                onAbort(abort);
+                break;
+            case WindowFW.TYPE_ID:
+                final WindowFW window = windowRO.wrap(buffer, index, index + length);
+                onWindow(window);
+                break;
+            case ResetFW.TYPE_ID:
+                final ResetFW reset = resetRO.wrap(buffer, index, index + length);
+                onReset(reset);
+                break;
+            case SignalFW.TYPE_ID:
+                final SignalFW signal = signalRO.wrap(buffer, index, index + length);
+                onSignal(signal);
+                break;
+            default:
+                break;
             }
         }
 
@@ -489,18 +491,18 @@ public final class AmqpServerFactory implements StreamFactory
                 buffer.getBytes(offset, nameInBytes, 0, 4);
                 return new String(nameInBytes);
             });
-            return name.equals("AMQP")
-                && header.id() == 0
-                && header.major() == 1
-                && header.minor() == 0
-                && header.revision() == 0;
+            return "AMQP".equals(name) &&
+                header.id() == 0 &&
+                header.major() == 1 &&
+                header.minor() == 0 &&
+                header.revision() == 0;
         }
 
         private void onAmqpOpen(
             AmqpFrameFW open)
         {
             // TODO
-             doAmqpOpen(open);
+            doAmqpOpen(open);
         }
 
         private void onAmqpBegin(
@@ -584,33 +586,33 @@ public final class AmqpServerFactory implements StreamFactory
 
             switch (amqpFrame.performative())
             {
-                case 0x00:
-                    // TODO: onAmqpOpen()
-                    break;
-                case 0x01:
-                    // TODO: onAmqpBegin();
-                    break;
-                case 0x02:
-                    // TODO: onAmqpAttach();
-                    break;
-                case 0x03:
-                    // TODO: onAmqpFlow();
-                    break;
-                case 0x04:
-                    // TODO: onAmqpTransfer();
-                    break;
-                case 0x05:
-                    // TODO: onAmqpDisposition();
-                    break;
-                case 0x06:
-                    // TODO: onAmqpDetach();
-                    break;
-                case 0x07:
-                    // TODO: onAmqpEnd();
-                    break;
-                case 0x08:
-                    // TODO: onAmqpClose();
-                    break;
+            case 0x00:
+                // TODO: onAmqpOpen()
+                break;
+            case 0x01:
+                // TODO: onAmqpBegin();
+                break;
+            case 0x02:
+                // TODO: onAmqpAttach();
+                break;
+            case 0x03:
+                // TODO: onAmqpFlow();
+                break;
+            case 0x04:
+                // TODO: onAmqpTransfer();
+                break;
+            case 0x05:
+                // TODO: onAmqpDisposition();
+                break;
+            case 0x06:
+                // TODO: onAmqpDetach();
+                break;
+            case 0x07:
+                // TODO: onAmqpEnd();
+                break;
+            case 0x08:
+                // TODO: onAmqpClose();
+                break;
             }
             return 0; // TODO
         }
