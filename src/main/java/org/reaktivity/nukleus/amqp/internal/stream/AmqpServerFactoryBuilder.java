@@ -15,8 +15,6 @@
  */
 package org.reaktivity.nukleus.amqp.internal.stream;
 
-import java.util.function.IntUnaryOperator;
-import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
 import java.util.function.Supplier;
@@ -91,20 +89,6 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
         ToIntFunction<String> supplyTypeId)
     {
         this.supplyTypeId = supplyTypeId;
-        return this;
-    }
-
-    @Override
-    public AmqpServerFactoryBuilder setGroupBudgetClaimer(
-        LongFunction<IntUnaryOperator> groupBudgetClaimer)
-    {
-        return this;
-    }
-
-    @Override
-    public AmqpServerFactoryBuilder setGroupBudgetReleaser(
-        LongFunction<IntUnaryOperator> groupBudgetReleaser)
-    {
         return this;
     }
 

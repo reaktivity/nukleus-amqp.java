@@ -282,7 +282,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .streamId(replyId)
                 .trace(supplyTraceId.getAsLong())
                 .groupId(0)
-                .padding(replyPadding)
+                .reserved(protocol.sizeof() + replyPadding)
                 .payload(protocol.buffer(), protocol.offset(), protocol.sizeof())
                 .build();
             receiver.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -364,15 +364,16 @@ public final class AmqpServerFactory implements StreamFactory
         private void onData(
             DataFW data)
         {
-            final OctetsFW payload = data.payload();
-            initialBudget -= Math.max(data.length(), 0) + data.padding();
+            initialBudget -= data.reserved();
 
             if (initialBudget < 0)
             {
                 doReset(supplyTraceId.getAsLong());
             }
-            else if (payload != null)
+            else
             {
+                final OctetsFW payload = data.payload();
+
                 decodeTraceId = data.trace();
                 DirectBuffer buffer = payload.buffer();
                 int offset = payload.offset();
