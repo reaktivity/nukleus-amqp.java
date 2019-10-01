@@ -349,11 +349,11 @@ scope protocol
 //        // 2.7 Performatives
 //        list AmqpOpen (AmqpList)
 //        {
-//            required AmqpString containerId; // AmqpString = variant of string32
+//            required AmqpString containerId;
 //            AmqpString hostname;
-//            AmqpUInt maxFrameSize; // AmqpUInt = variant of uint32
-//            AmqpUShort channelMax; // AmqpUShort = variant of uint16
-//            AmqpMilliseconds idleTimeOut; // AmqpMilliseconds == AmqpUInt
+//            AmqpUInt maxFrameSize = 4294967295;
+//            AmqpUShort channelMax = 65535;
+//            AmqpMilliseconds idleTimeOut;
 //            AmqpArray<AmqpIETFLanguageTag> outgoingLocales; // AmqpArray = variant of array, AmqpIETFLanguageTag == AmqpSymbol
 //            AmqpArray<AmqpIETFLanguageTag> incomingLocales;
 //            AmqpArray<AmqpSymbol> offeredCapabilities;
@@ -367,7 +367,7 @@ scope protocol
 //            required AmqpTransferNumber nextOutgoingId;
 //            required AmqpUInt incomingWindow;
 //            required AmqpUInt outgoingWindow;
-//            AmqpHandle handleMax;
+//            AmqpHandle handleMax = 4294967295;
 //            AmqpArray<AmqpSymbol> offeredCapabilities;
 //            AmqpArray<AmqpSymbol> desiredCapabilities;
 //            AmqpFields<AmqpValue> properties;
@@ -378,12 +378,12 @@ scope protocol
 //            required AmqpString name;
 //            required AmqpHandle handle;
 //            required AmqpRole role;
-//            AmqpSenderSettleMode sndSettleMode;
-//            AmqpReceiverSettleMode rcvSettleMode;
+//            AmqpSenderSettleMode sndSettleMode = MIXED;
+//            AmqpReceiverSettleMode rcvSettleMode = FIRST;
 //            AmqpSource source;
 //            AmqpTarget target;
 //            AmqpMap unsettled;
-//            AmqpBoolean incompleteUnsettled;
+//            AmqpBoolean incompleteUnsettled = FALSE;
 //            AmqpSequenceNo initialDeliveryCount;
 //            AmqpULong maxMessageSize;
 //            AmqpArray<AmqpSymbol> offeredCapabilities;
@@ -401,8 +401,8 @@ scope protocol
 //            AmqpSequenceNo deliveryCount;
 //            AmqpUInt linkCredit;
 //            AmqpUInt available;
-//            AmqpBoolean drain;
-//            AmqpBoolean echo;
+//            AmqpBoolean drain = FALSE;
+//            AmqpBoolean echo = FALSE;
 //            AmqpFields properties;
 //        }
 //
@@ -413,12 +413,12 @@ scope protocol
 //            AmqpDeliveryTag deliveryTag;
 //            AmqpMessageFormat messageFormat;
 //            AmqpBoolean settled;
-//            AmqpBoolean more;
+//            AmqpBoolean more = FALSE;
 //            AmqpReceiverSettleMode rcvSettleMode;
 //            AmqpDeliveryState state;
-//            AmqpBoolean resume;
-//            AmqpBoolean aborted;
-//            AmqpBoolean batchable;
+//            AmqpBoolean resume = FALSE;
+//            AmqpBoolean aborted = FALSE;
+//            AmqpBoolean batchable = FALSE;
 //        }
 //
 //        list AmqpDisposition (AmqpList)
@@ -426,15 +426,15 @@ scope protocol
 //            required AmqpRole role;
 //            required AmqpDeliveryNumber first;
 //            AmqpDeliveryNumber last;
-//            AmqpBoolean settled;
+//            AmqpBoolean settled = FALSE;
 //            AmqpDeliveryState state;
-//            AmqpBoolean batchable;
+//            AmqpBoolean batchable = FALSE;
 //        }
 //
 //        list AmqpDetach (AmqpList)
 //        {
 //            required AmqpHandle handle;
-//            AmqpBoolean closed;
+//            AmqpBoolean closed = FALSE;
 //            Error error;
 //        }
 //
@@ -459,7 +459,7 @@ scope protocol
 //        {
 //            UNSETTLED (0),
 //            SETTLED (1),
-//            MIZED (2)
+//            MIXED (2)
 //        }
 //
 //        enum AmqpReceiverSettleMode (AmqpUByte)
