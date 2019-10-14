@@ -210,12 +210,14 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         private void doBegin(
-            long traceId)
+            long traceId,
+            long affinity)
         {
             final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(replyId)
-                .trace(traceId)
+                .traceId(traceId)
+                .affinity(affinity)
                 .build();
             receiver.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
             router.setThrottle(replyId, this::onNetwork);
@@ -227,7 +229,7 @@ public final class AmqpServerFactory implements StreamFactory
             final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(initialId)
-                .trace(traceId)
+                .traceId(traceId)
                 .build();
 
             receiver.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
@@ -244,10 +246,10 @@ public final class AmqpServerFactory implements StreamFactory
                 final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                     .routeId(routeId)
                     .streamId(initialId)
-                    .trace(traceId)
+                    .traceId(traceId)
+                    .budgetId(0L)
                     .credit(initialCredit)
                     .padding(initialPadding)
-                    .groupId(0)
                     .build();
 
                 receiver.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
@@ -259,7 +261,7 @@ public final class AmqpServerFactory implements StreamFactory
             final EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(replyId)
-                .trace(supplyTraceId.getAsLong())
+                .traceId(supplyTraceId.getAsLong())
                 .build();
             receiver.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
         }
@@ -280,8 +282,8 @@ public final class AmqpServerFactory implements StreamFactory
             final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(replyId)
-                .trace(supplyTraceId.getAsLong())
-                .groupId(0)
+                .traceId(supplyTraceId.getAsLong())
+                .budgetId(0L)
                 .reserved(protocol.sizeof() + replyPadding)
                 .payload(protocol.buffer(), protocol.offset(), protocol.sizeof())
                 .build();
@@ -305,7 +307,7 @@ public final class AmqpServerFactory implements StreamFactory
             final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(replyId)
-                .trace(supplyTraceId.getAsLong())
+                .traceId(supplyTraceId.getAsLong())
                 .groupId(0)
                 .padding(replyPadding)
                 .payload(open.buffer(), open.offset(), open.limit())
@@ -358,7 +360,7 @@ public final class AmqpServerFactory implements StreamFactory
         private void onBegin(
             BeginFW begin)
         {
-            doBegin(supplyTraceId.getAsLong());
+            doBegin(supplyTraceId.getAsLong(), begin.affinity());
         }
 
         private void onData(
@@ -374,7 +376,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 final OctetsFW payload = data.payload();
 
-                decodeTraceId = data.trace();
+                decodeTraceId = data.traceId();
                 DirectBuffer buffer = payload.buffer();
                 int offset = payload.offset();
                 int length = payload.sizeof();
