@@ -48,12 +48,12 @@
     <jmh.version>1.17.4</jmh.version>
     <jmh.profilers.version>0.1.3</jmh.profilers.version>
 
-    <k3po.version>3.0.0-alpha-103</k3po.version>
+    <k3po.version>3.0.0-alpha-104</k3po.version>
 
     <nukleus.plugin.version>0.42</nukleus.plugin.version>
 
-    <nukleus.amqp.spec.version>0.5</nukleus.amqp.spec.version>
-    <reaktor.version>0.104</reaktor.version>
+    <nukleus.amqp.spec.version>0.6</nukleus.amqp.spec.version>
+    <reaktor.version>0.115</reaktor.version>
   </properties>
 
   <dependencies>
@@ -144,7 +144,7 @@
         <configuration>
           <header>COPYRIGHT</header>
           <properties>
-            <copyrightYears>2016-2019</copyrightYears>
+            <copyrightYears>2016-2020</copyrightYears>
           </properties>
           <includes>
             <include>src/**</include>
@@ -187,7 +187,7 @@
           <dependency>
             <groupId>com.puppycrawl.tools</groupId>
             <artifactId>checkstyle</artifactId>
-            <version>8.23</version>
+            <version>8.29</version>
           </dependency>
         </dependencies>
       </plugin>
@@ -257,6 +257,11 @@
             <artifactId>reaktor</artifactId>
             <version>${reaktor.version}</version>
             <type>test-jar</type>
+          </dependency>
+          <dependency>
+            <groupId>org.reaktivity</groupId>
+            <artifactId>reaktor</artifactId>
+            <version>${reaktor.version}</version>
           </dependency>
         </dependencies>
       </plugin>
