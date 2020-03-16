@@ -15,13 +15,10 @@
  */
 scope protocol
 {
+    option byteorder network;
+
     scope codec
     {
-//        variant AmqpDescriptor switch (AmqpType+) of uint64
-//        {
-//            case DESCRIBED: AmqpULong;
-//        }
-
         struct AmqpProtocolHeader
         {
             octets[4] name;
@@ -30,16 +27,7 @@ scope protocol
             uint8 minor;
             uint8 revision;
         }
-//
-//        struct AmqpFrame
-//        {
-//            uint32 size;
-//            uint8 doff;
-//            uint8 type;
-//            uint16 channel;
-//            AmqpPerformative performative;
-//        }
-//
+
 //        union AmqpPerformative switch (AmqpDescribedType)
 //        {
 //            case OPEN: AmqpOpen open;
@@ -52,120 +40,64 @@ scope protocol
 //            case END: AmqpEnd end;
 //            case CLOSE: AmqpClose close;
 //        }
-//
-//        variant AmqpValue switch (AmqpType)
-//        {
-//            case DESCRIBED:
-//                AmqpDescribedValue;
-//            case NULL:
-//                AmqpNull;
-//            case BOOLEAN:
-//            case TRUE:
-//            case FALSE:
-//                AmqpBoolean;
-//            case UBYTE:
-//                AmqpUByte;
-//            case USHORT:
-//                AmqpUShort;
-//            case UINT4:
-//            case UINT1:
-//            case UINT0:
-//                AmqpUInt;
-//            case ULONG8:
-//            case ULONG1:
-//            case ULONG0:
-//                AmqpULong;
-//            case BYTE:
-//                AmqpByte;
-//            case SHORT:
-//                AmqpShort;
-//            case INT4:
-//            case INT1:
-//                AmqpInt;
-//            case LONG8:
-//            case LONG1:
-//                AmqpLong;
-//            case FLOAT:
-//                AmqpFloat;
-//            case DOUBLE:
-//                AmqpDouble;
-//            case DECIMAL32:
-//                AmqpDecimal32;
-//            case DECIMAL64:
-//                AmqpDecimal64;
-//            case DECIMAL128:
-//                AmqpDecimal128;
-//            case CHAR:
-//                AmqpChar;
-//            case TIMESTAMP:
-//                AmqpTimestamp;
-//            case UUID:
-//                AmqpUUId;
-//            case BINARY1:
-//            case BINARY4:
-//                AmqpBinary;
-//            case STRING1:
-//            case STRING4:
-//                AmqpString;
-//            case SYMBOL1:
-//            case SYMBOL4:
-//                AmqpSymbol;
-//            case LIST0:
-//            case LIST1:
-//            case LIST4:
-//                AmqpList;
-//            case MAP1:
-//            case MAP4:
-//                AmqpMap;
-//            case ARRAY1:
-//            case ARRAY4:
-//                AmqpArray;
-//        }
-//
-//        enum AmqpType (uint8)
-//        {
-//            DESCRIBED (0x00),
-//            NULL (0x40),
-//            BOOLEAN (0x56),
-//            TRUE (0x41),
-//            FALSE (0x42),
-//            UBYTE (0x50),
-//            USHORT (0x60),
-//            UINT4 (0x70),
-//            UINT1 (0x52),
-//            UINT0 (0x43),
-//            ULONG8 (0x80),
-//            ULONG1 (0x53),
-//            ULONG0 (0x44),
-//            BYTE (0x51),
-//            SHORT (0x61),
-//            INT4 (0x71),
-//            INT1 (0x54),
-//            LONG8 (0x81),
-//            LONG1 (0x55),
-//            FLOAT (0x72),
-//            DOUBLE (0x82),
-//            DECIMAL32 (0x74),
-//            DECIMAL64 (0x84),
-//            DECIMAL128 (0x94),
-//            CHAR (0x73),
-//            TIMESTAMP (0x83),
-//            UUID (0x98),
-//            BINARY1 (0xa0),
-//            BINARY4 (0xb0),
-//            STRING1 (0xa1),
-//            STRING4 (0xb1),
-//            SYMBOL1 (0xa3),
-//            SYMBOL4 (0xb3),
-//            LIST0 (0x45),
-//            LIST1 (0xc0),
-//            LIST4 (0xd0),
-//            MAP1 (0xc1),
-//            MAP4 (0xd1),
-//            ARRAY1 (0xe0),
-//            ARRAY4 (0xf0)
-//        }
-//
+
+        enum AmqpType (uint8)
+        {
+            DESCRIBED (0x00),
+            NULL (0x40),
+            BOOLEAN (0x56),
+            TRUE (0x41),
+            FALSE (0x42),
+            UBYTE (0x50),
+            USHORT (0x60),
+            UINT4 (0x70),
+            UINT1 (0x52),
+            UINT0 (0x43),
+            ULONG8 (0x80),
+            ULONG1 (0x53),
+            ULONG0 (0x44),
+            BYTE (0x51),
+            SHORT (0x61),
+            INT4 (0x71),
+            INT1 (0x54),
+            LONG8 (0x81),
+            LONG1 (0x55),
+            FLOAT (0x72),
+            DOUBLE (0x82),
+            DECIMAL32 (0x74),
+            DECIMAL64 (0x84),
+            DECIMAL128 (0x94),
+            CHAR (0x73),
+            TIMESTAMP (0x83),
+            UUID (0x98),
+            BINARY1 (0xa0),
+            BINARY4 (0xb0),
+            STRING1 (0xa1),
+            STRING4 (0xb1),
+            SYMBOL1 (0xa3),
+            SYMBOL4 (0xb3),
+            LIST0 (0x45),
+            LIST1 (0xc0),
+            LIST4 (0xd0),
+            MAP1 (0xc1),
+            MAP4 (0xd1),
+            ARRAY1 (0xe0),
+            ARRAY4 (0xf0)
+        }
+
+        enum AmqpFrameType (uint8)
+        {
+            OPEN (0x10),
+            BEGIN (0x11),
+            ATTACH (0x12),
+            FLOW (0x13),
+            TRANSFER (0x14),
+            DISPOSITION (0x15),
+            DETACH (0x16),
+            END (0x17),
+            CLOSE (0x18)
+        }
+
 //        enum AmqpDescribedType (AmqpDescriptor)
 //        {
 //            OPEN (0x10L),
@@ -211,64 +143,65 @@ scope protocol
 //        }
 //
 //        // 1.6 primitive type definitions
-//        variant AmqpNull switch (AmqpType)
-//        {
-//            case NULL: 0;
-//        }
-//
-//        variant AmqpBoolean switch (AmqpType) of uint8
-//        {
-//            case BOOLEAN: uint8;
-//            case TRUE: 1;
-//            case FALSE: 0;
-//        }
-//
-//        variant AmqpUByte switch (AmqpType) of uint8
-//        {
-//            case UBYTE: uint8;
-//        }
-//
-//        variant AmqpUShort switch (AmqpType) of uint16
-//        {
-//            case USHORT: uint16;
-//        }
-//
-//        variant AmqpUInt switch (AmqpType) of uint32
-//        {
-//            case UINT4: uint32;
-//            case UINT1: uint8;
-//            case UINT0: 0;
-//        }
-//
-//        variant AmqpULong switch (AmqpType) of uint64
-//        {
-//            case ULONG8: uint64;
-//            case ULONG1: uint8;
-//            case ULONG0: 0;
-//        }
-//
-//        variant AmqpByte switch (AmqpType) of int8
-//        {
-//            case BYTE: int8;
-//        }
-//
-//        variant AmqpShort switch (AmqpType) of int16
-//        {
-//            case SHORT: int16;
-//        }
-//
-//        variant AmqpInt switch (AmqpType) of int32
-//        {
-//            case INT4: int32;
-//            case INT1: int8;
-//        }
-//
-//        variant AmqpLong switch (AmqpType) of int64
-//        {
-//            case LONG8: int64;
-//            case LONG1: int8;
-//        }
-//
+        variant AmqpNull switch (AmqpType) of uint8
+        {
+            case NULL: 0;
+        }
+
+        variant AmqpBoolean switch (AmqpType) of uint8
+        {
+            case BOOLEAN: uint8;
+            case TRUE: 1;
+            case FALSE: 0;
+        }
+
+        variant AmqpUByte switch (AmqpType) of uint8
+        {
+            case UBYTE: uint8;
+        }
+
+        variant AmqpUShort switch (AmqpType) of uint16
+        {
+            case USHORT: uint16;
+        }
+
+        variant AmqpUInt switch (AmqpType) of uint32
+        {
+            case UINT4: uint32;
+            case UINT1: uint8;
+            case UINT0: 0;
+        }
+
+        variant AmqpULong switch (AmqpType) of uint64
+        {
+            case ULONG8: uint64;
+            case ULONG1: uint8;
+            case ULONG0: 0;
+        }
+
+        variant AmqpByte switch (AmqpType) of int8
+        {
+            case BYTE: int8;
+        }
+
+        variant AmqpShort switch (AmqpType) of int16
+        {
+            case SHORT: int16;
+        }
+
+        variant AmqpInt switch (AmqpType) of int32
+        {
+            case INT4: int32;
+            case INT1: int8;
+        }
+
+        variant AmqpLong switch (AmqpType) of int64
+        {
+            case LONG8: int64;
+            case LONG1: int8;
+        }
+
+//        TODO: will be implelemted later
 //        variant AmqpFloat switch (AmqpType)
 //        {
 //            case FLOAT: octets[4];
@@ -294,86 +227,194 @@ scope protocol
 //            case DECIMAL128: octets[16];
 //        }
 //
-//        variant AmqpChar switch (AmqpType)
+        variant AmqpChar switch (AmqpType) of uint32
+        {
+            case CHAR: uint32;
+        }
+
+        variant AmqpTimestamp switch (AmqpType) of int64
+        {
+            case TIMESTAMP: int64;
+        }
+
+        variant AmqpUUId switch (AmqpType) of string
+        {
+            case UUID: string16;
+        }
+
+        variant AmqpBinary switch (AmqpType) of octets[]
+        {
+            case BINARY1: octets[uint8];
+            case BINARY4: octets[uint32];
+        }
+
+        variant AmqpString switch (AmqpType) of string
+        {
+            case STRING1: string8;
+            case STRING4: string32;
+        }
+
+        variant AmqpSymbol switch (AmqpType) of string
+        {
+            case SYMBOL1: string8;
+            case SYMBOL4: string32;
+        }
+
+        variant AmqpList switch (AmqpType) of list
+        {
+            case LIST4: list<uint32, uint32, 0x40>;
+            case LIST1: list<uint8, uint8, 0x40>;
+            case LIST0: list<0, 0>;
+        }
+
+        variant AmqpMap switch (AmqpType) of map
+        {
+            case MAP4: map<uint32>;
+            case MAP1: map<uint8>;
+        }
+
+        variant AmqpArray switch (AmqpType) of array
+        {
+            case ARRAY4: array<uint32, uint32>;
+            case ARRAY1: array<uint8, uint8>;
+        }
+
+//        variant AmqpDescriptor switch (AmqpType) of uint64
 //        {
-//            case CHAR: octets[4];
+//            case DESCRIBED: AmqpULong;
+//        }
+
+        variant AmqpValue switch (AmqpType)
+        {
+            case NULL:
+                AmqpNull;
+            case BOOLEAN:
+            case TRUE:
+            case FALSE:
+                AmqpBoolean;
+            case UBYTE:
+                AmqpUByte;
+            case USHORT:
+                AmqpUShort;
+            case UINT4:
+            case UINT1:
+            case UINT0:
+                AmqpUInt;
+            case ULONG8:
+            case ULONG1:
+            case ULONG0:
+                AmqpULong;
+            case BYTE:
+                AmqpByte;
+            case SHORT:
+                AmqpShort;
+            case INT4:
+            case INT1:
+                AmqpInt;
+            case LONG8:
+            case LONG1:
+                AmqpLong;
+            case CHAR:
+                AmqpChar;
+            case TIMESTAMP:
+                AmqpTimestamp;
+            case UUID:
+                AmqpUUId;
+            case BINARY1:
+            case BINARY4:
+                AmqpBinary;
+            case STRING1:
+            case STRING4:
+                AmqpString;
+            case SYMBOL1:
+            case SYMBOL4:
+                AmqpSymbol;
+            case LIST0:
+            case LIST1:
+            case LIST4:
+                AmqpList;
+            case MAP1:
+            case MAP4:
+                AmqpMap<AmqpValue, AmqpValue>;
+//            case ARRAY1:
+//            case ARRAY4:
+//                AmqpArray<AmqpValue>;
+        }
+
+        map AmqpFields<AmqpValue, V> using AmqpMap;
+
+        typedef AmqpUInt as AmqpHandle;
+        typedef AmqpUInt as AmqpSeconds;
+        typedef AmqpUInt as AmqpMilliseconds;
+        typedef AmqpUInt as AmqpSequenceNo;
+        typedef AmqpBinary as AmqpDeliveryTag;
+        typedef AmqpSequenceNo as AmqpDeliveryNumber;
+        typedef AmqpSequenceNo as AmqpTransferNumber;
+        typedef AmqpUInt as AmqpMessageFormat;
+        typedef AmqpSymbol as AmqpIETFLanguageTag;
+
+        struct Performative
+        {
+            AmqpType domainId; // 0x00
+            AmqpULong descriptorId; // 0x53 0xXX
+        }
+
+        struct AmqpFrameHeader
+        {
+            uint32 size;
+            uint8 doff;
+            uint8 type;
+            uint16 channel;
+            Performative performative;
+        }
+
+        enum AmqpRole (uint8)
+        {
+            SENDER (0x42),
+            RECEIVER (0x41)
+        }
+//
+//        enum AmqpSenderSettleMode (AmqpUByte)
+//        {
+//            UNSETTLED (0),
+//            SETTLED (1),
+//            MIXED (2)
 //        }
 //
-//        variant AmqpTimestamp switch (AmqpType)
+//        enum AmqpReceiverSettleMode (AmqpUByte)
 //        {
-//            case TIMESTAMP: int64;
+//            FIRST (0),
+//            SECOND (1)
 //        }
-//
-//        variant AmqpUUId switch (AmqpType)
-//        {
-//            case UUID: string16;
-//        }
-//
-//        variant AmqpBinary switch (AmqpType)
-//        {
-//            case BINARY1: octets[uint8];
-//            case BINARY4: octets[uint32];
-//        }
-//
-//        variant AmqpString switch (AmqpType) of string32
-//        {
-//            case STRING1: string;
-//            case STRING4: string32;
-//        }
-//
-//        variant AmqpSymbol switch (AmqpType) of string32
-//        {
-//            case SYMBOL1: string;
-//            case SYMBOL4: string32;
-//        }
-//
-//        variant AmqpList switch (AmqpType) of list
-//        {
-//            case LIST4: list[uint32, uint32, 0x40];
-//            case LIST1: list[uint8, uint8, 0x40];
-//            case LIST0: list[0, 0];
-//        }
-//
-//        variant AmqpMap switch (AmqpType) of map
-//        {
-//            case MAP4: map[uint32];
-//            case MAP1: map[uint8];
-//        }
-//
-//        variant AmqpArray switch (AmqpType) of array
-//        {
-//            case ARRAY4: array[uint32, uint32];
-//            case ARRAY1: array[uint8, uint8];
-//        }
-//
+
 //        // 2.7 Performatives
-//        list AmqpOpen (AmqpList)
-//        {
-//            required AmqpString containerId;
-//            AmqpString hostname;
-//            AmqpUInt maxFrameSize = 4294967295;
-//            AmqpUShort channelMax = 65535;
-//            AmqpMilliseconds idleTimeOut;
-//            AmqpArray<AmqpIETFLanguageTag> outgoingLocales; // AmqpArray = variant of array, AmqpIETFLanguageTag == AmqpSymbol
-//            AmqpArray<AmqpIETFLanguageTag> incomingLocales;
-//            AmqpArray<AmqpSymbol> offeredCapabilities;
-//            AmqpArray<AmqpSymbol> desiredCapabilities;
-//            AmqpFields<AmqpValue> properties; // AmqpFields<V> == AmqpMap<AmqpSymbol, V>
-//        }
-//
-//        list AmqpBegin (AmqpList)
-//        {
-//            AmqpUShort remoteChannel;
-//            required AmqpTransferNumber nextOutgoingId;
-//            required AmqpUInt incomingWindow;
-//            required AmqpUInt outgoingWindow;
-//            AmqpHandle handleMax = 4294967295;
-//            AmqpArray<AmqpSymbol> offeredCapabilities;
-//            AmqpArray<AmqpSymbol> desiredCapabilities;
-//            AmqpFields<AmqpValue> properties;
-//        }
-//
-//        list AmqpAttach (AmqpList)
+        list AmqpOpen using AmqpList
+        {
+            required AmqpString containerId;
+            AmqpString hostname;
+            AmqpUInt maxFrameSize = 4294967295L;
+            AmqpUShort channelMax = 65535;
+            AmqpMilliseconds idleTimeOut;
+            AmqpArray<AmqpIETFLanguageTag> outgoingLocales;
+            AmqpArray<AmqpIETFLanguageTag> incomingLocales;
+            AmqpArray<AmqpSymbol> offeredCapabilities;
+            AmqpArray<AmqpSymbol> desiredCapabilities;
+            AmqpFields<AmqpValue> properties;
+        }
+
+        list AmqpBegin using AmqpList
+        {
+            AmqpUShort remoteChannel;
+            required AmqpTransferNumber nextOutgoingId;
+            required AmqpUInt incomingWindow;
+            required AmqpUInt outgoingWindow;
+            AmqpHandle handleMax = 4294967295L;
+            AmqpArray<AmqpSymbol> offeredCapabilities;
+            AmqpArray<AmqpSymbol> desiredCapabilities;
+            AmqpFields<AmqpValue> properties;
+        }
+
+//        list AmqpAttach using AmqpList
 //        {
 //            required AmqpString name;
 //            required AmqpHandle handle;
@@ -448,37 +489,6 @@ scope protocol
 //            Error error;
 //        }
 //
-//        // 2.8 Definitions
-//        enum AmqpRole (AmqpBoolean)
-//        {
-//            SENDER (0),
-//            RECEIVER (1)
-//        }
-//
-//        enum AmqpSenderSettleMode (AmqpUByte)
-//        {
-//            UNSETTLED (0),
-//            SETTLED (1),
-//            MIXED (2)
-//        }
-//
-//        enum AmqpReceiverSettleMode (AmqpUByte)
-//        {
-//            FIRST (0),
-//            SECOND (1)
-//        }
-//
-//        typedef AmqpUInt as AmqpHandle;
-//        typedef AmqpUInt as AmqpSeconds;
-//        typedef AmqpUInt as AmqpMilliseconds;
-//        typedef AmqpBinary as AmqpDeliveryTag;
-//        typedef AmqpSequenceNo as AmqpDeliveryNumber;
-//        typedef AmqpSequenceNo as AmqpTransferNumber;
-//        typedef AmqpUInt as AmqpSequenceNo;
-//        typedef AmqpUInt as AmqpMessageFormat;
-//        typedef AmqpSymbol as AmqpIETFLanguageTag;
-//        typedef AmqpMap<AmqpSymbol, V> as AmqpFields<V>;
-//
 //        list AmqpErrorList (AmqpList)
 //        {
 //            required AmqpErrorType condition;
@@ -486,9 +496,9 @@ scope protocol
 //            AmqpFields info;
 //        }
 //
-//        variant AmqpError switch (AmqpDescribedType+)
+//        union AmqpError switch (AmqpDescribedType)
 //        {
-//            case ERROR: AmqpErrorList;
+//            case ERROR: AmqpErrorList value;
 //        }
 //
 //        enum AmqpErrorType (AmqpSymbol)
@@ -640,9 +650,9 @@ scope protocol
 //            AmqpArray<AmqpSymbol> capabilities;
 //        }
 //
-//        variant AmqpSource switch (AmqpDescribedType+)
+//        union AmqpSource switch (AmqpDescribedType)
 //        {
-//            case SOURCE: AmqpSourceList;
+//            case SOURCE: AmqpSourceList value;
 //        }
 //
 //        union AmqpTarget switch (AmqpDescribedType)
@@ -705,9 +715,9 @@ scope protocol
 //            AmqpTxnId globalId;
 //        }
 //
-//        variant AmqpDeclare switch (AmqpDescribedType+)
+//        union AmqpDeclare switch (AmqpDescribedType)
 //        {
-//            case DECLARE: AmqpDeclareList;
+//            case DECLARE: AmqpDeclareList value;
 //        }
 //
 //        list AmqpDischargeList (AmqpList)
@@ -716,9 +726,9 @@ scope protocol
 //            AmqpBoolean fail;
 //        }
 //
-//        variant AmqpDischarge switch (AmqpDescribedType+)
+//        union AmqpDischarge switch (AmqpDescribedType)
 //        {
-//            case DISCHARGE: AmqpDischargeList;
+//            case DISCHARGE: AmqpDischargeList value;
 //        }
 //
 //        typedef AmqpBinary as AmqpTxnId;

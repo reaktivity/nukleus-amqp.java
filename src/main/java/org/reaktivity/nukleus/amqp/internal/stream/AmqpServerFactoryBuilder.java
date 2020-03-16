@@ -22,6 +22,7 @@ import java.util.function.ToIntFunction;
 
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
+import org.reaktivity.nukleus.budget.BudgetCreditor;
 import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
@@ -35,9 +36,11 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
     private MutableDirectBuffer writeBuffer;
     private LongUnaryOperator supplyInitialId;
     private LongUnaryOperator supplyReplyId;
+    private LongSupplier supplyBudgetId;
     private LongSupplier supplyTraceId;
-    private ToIntFunction<String> supplyTypeId;
     private Supplier<BufferPool> supplyBufferPool;
+    private ToIntFunction<String> supplyTypeId;
+    private BudgetCreditor creditor;
 
     public AmqpServerFactoryBuilder(
         AmqpConfiguration config)
@@ -86,6 +89,22 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
+    public StreamFactoryBuilder setBudgetIdSupplier(
+        LongSupplier supplyBudgetId)
+    {
+        this.supplyBudgetId = supplyBudgetId;
+        return this;
+    }
+
+    @Override
+    public StreamFactoryBuilder setBudgetCreditor(
+        BudgetCreditor creditor)
+    {
+        this.creditor = creditor;
+        return this;
+    }
+
+    @Override
     public StreamFactoryBuilder setTypeIdSupplier(
         ToIntFunction<String> supplyTypeId)
     {
@@ -111,8 +130,10 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
             router,
             writeBuffer,
             bufferPool,
+            creditor,
             supplyInitialId,
             supplyReplyId,
+            supplyBudgetId,
             supplyTraceId);
     }
 }

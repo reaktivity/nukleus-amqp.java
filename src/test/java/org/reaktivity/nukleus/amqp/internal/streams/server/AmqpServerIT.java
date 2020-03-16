@@ -46,7 +46,7 @@ public class AmqpServerIT
         .counterValuesBufferCapacity(8192)
         .nukleus("amqp"::equals)
         .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
-        .configure(AMQP_CONTAINER_ID.name(), "localhost")
+        .configure(AMQP_CONTAINER_ID.name(), "reaktivity")
         .clean();
 
     @Rule
@@ -58,6 +58,24 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/connection/header.exchange/handshake.client" })
     public void shouldExchangeHeader() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/open.exchange/client" })
+    public void shouldExchangeOpen() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/begin.exchange/client" })
+    public void shouldExchangeBegin() throws Exception
     {
         k3po.finish();
     }
