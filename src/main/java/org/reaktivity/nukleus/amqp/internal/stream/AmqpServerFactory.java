@@ -121,6 +121,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeHeader = this::decodeHeader;
     private final AmqpServerDecoder decodeOpen = this::decodeOpen;
     private final AmqpServerDecoder decodeBegin = this::decodeBegin;
+    private final AmqpServerDecoder decodeClose = this::decodeClose;
     private final AmqpServerDecoder decodeIgnoreAll = this::decodeIgnoreAll;
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
 
@@ -132,6 +133,7 @@ public final class AmqpServerFactory implements StreamFactory
         final Map<AmqpFrameType, AmqpServerDecoder> decodersByFrameType = new EnumMap<>(AmqpFrameType.class);
         decodersByFrameType.put(AmqpFrameType.OPEN, decodeOpen);
         decodersByFrameType.put(AmqpFrameType.BEGIN, decodeBegin);
+        decodersByFrameType.put(AmqpFrameType.CLOSE, decodeClose);
         // decodersByFrameType.put(AmqpFrameType.ATTACH, decodeAttach);
         // decodersByFrameType.put(AmqpFrameType.FLOW, decodeFlow);
         // decodersByFrameType.put(AmqpFrameType.TRANSFER, decodeTransfer);
@@ -473,6 +475,18 @@ public final class AmqpServerFactory implements StreamFactory
         return progress;
     }
 
+    private int decodeClose(
+        AmqpServer server,
+        final long traceId,
+        final long authorization,
+        final long budgetId,
+        final DirectBuffer buffer,
+        final int offset,
+        final int limit)
+    {
+        return offset;
+    }
+
     private int decodeIgnoreAll(
         AmqpServer server,
         long traceId,
@@ -654,6 +668,13 @@ public final class AmqpServerFactory implements StreamFactory
                 .build();
 
             doNetworkData(traceId, authorization, 0L, openWithFrameHeader);
+        }
+
+        private void doEncodeClose(
+            long traceId,
+            long authorization)
+        {
+
         }
 
         private void encodeNetwork(
@@ -1090,6 +1111,13 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization)
         {
             doEncodeBegin(traceId, authorization);
+        }
+
+        private void onDecodeClose(
+            long traceId,
+            long authorization)
+        {
+            doEncodeClose(traceId, authorization);
         }
 
         private boolean isAmqpHeaderValid(
