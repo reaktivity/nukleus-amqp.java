@@ -353,7 +353,7 @@ scope protocol
         typedef AmqpSymbol as AmqpIETFLanguageTag;
         typedef AmqpString as AmqpAddress;
         typedef AmqpMap as AmqpFilterSet;
-        typedef AmqpFields as AmqpNodeProperties;
+//        typedef AmqpFields as AmqpNodeProperties;
         typedef AmqpBinary as AmqpTxnId;
 
         struct Performative
@@ -451,12 +451,12 @@ scope protocol
         {
             required AmqpErrorType condition;
             AmqpString description;
-            AmqpFields info;
+            AmqpFields<AmqpValue> info;
         }
 
         union AmqpError switch (AmqpDescribedType)
         {
-            case ERROR: AmqpErrorList value;
+            case ERROR: AmqpErrorList errorList;
         }
 
         list AmqpReceived using AmqpList
@@ -467,7 +467,7 @@ scope protocol
 
         list AmqpRejected using AmqpList
         {
-            AmqpError error;
+            AmqpErrorList error;
         }
 
         list AmqpModified using AmqpList
@@ -477,7 +477,7 @@ scope protocol
             AmqpFields<AmqpValue> messageAnnotations;
         }
 
-        list AmqpDeclared (AmqpList)
+        list AmqpDeclared using AmqpList
         {
             required AmqpTxnId txnId;
         }
@@ -498,9 +498,9 @@ scope protocol
             AmqpTerminusExpiryPolicy expiryPolicy;
             AmqpSeconds timeout;
             AmqpBoolean dynamic;
-            AmqpNodeProperties dynamicNodeProperties;
+            AmqpFields<AmqpValue> dynamicNodeProperties;
             AmqpStandardDistributionMode distributionMode;
-            AmqpFilterSet filter;
+            AmqpMap<AmqpSymbol, AmqpSymbol> filter; // value type?
             AmqpOutcome defaultOutcome;
             AmqpArray<AmqpSymbol> outcomes;
             AmqpArray<AmqpSymbol> capabilities;
@@ -508,7 +508,7 @@ scope protocol
 
         union AmqpSource switch (AmqpDescribedType)
         {
-            case SOURCE: AmqpSourceList value;
+            case SOURCE: AmqpSourceList sourceList;
         }
 
         list AmqpTargetList using AmqpList
@@ -518,8 +518,22 @@ scope protocol
             AmqpTerminusExpiryPolicy expiryPolicy;
             AmqpSeconds timeout;
             AmqpBoolean dynamic;
-            AmqpNodeProperties dynamicNodeProperties;
+            AmqpFields<AmqpValue> dynamicNodeProperties;
             AmqpArray<AmqpSymbol> capabilities;
+        }
+
+        enum AmqpTransactionCapability (AmqpSymbol)
+        {
+            LOCAL_TRANSACTIONS ("amqp:local-transactions"),
+            DISTRIBUTED_TRANSACTIONS ("amqp:distributed-transactions"),
+            PROMOTABLE_TRANSACTIONS ("amqp:promotable-transactions"),
+            MULTI_TXNS_PER_SSN ("amqp:multi-txns-per-ssn"),
+            MULTI_SSNS_PER_TXN ("amqp:multi-ssns-per-txn")
+        }
+
+        list AmqpCoordinator using AmqpList
+        {
+            AmqpArray<AmqpTransactionCapability> capabilities;
         }
 
         union AmqpTarget switch (AmqpDescribedType)
@@ -580,8 +594,8 @@ scope protocol
             AmqpReceiverSettleMode rcvSettleMode = FIRST;
             AmqpSource source;
             AmqpTarget target;
-            AmqpMap unsettled;
-            AmqpBoolean incompleteUnsettled = FALSE;
+            AmqpMap<AmqpDeliveryTag, AmqpSymbol> unsettled;
+            AmqpBoolean incompleteUnsettled = 0;
             AmqpSequenceNo initialDeliveryCount;
             AmqpULong maxMessageSize;
             AmqpArray<AmqpSymbol> offeredCapabilities;
@@ -599,8 +613,8 @@ scope protocol
             AmqpSequenceNo deliveryCount;
             AmqpUInt linkCredit;
             AmqpUInt available;
-            AmqpBoolean drain = FALSE;
-            AmqpBoolean echo = FALSE;
+            AmqpBoolean drain = 0;
+            AmqpBoolean echo = 0;
             AmqpFields<AmqpValue> properties;
         }
 
@@ -611,41 +625,40 @@ scope protocol
             AmqpDeliveryTag deliveryTag;
             AmqpMessageFormat messageFormat;
             AmqpBoolean settled;
-            AmqpBoolean more = FALSE;
+            AmqpBoolean more = 0;
             AmqpReceiverSettleMode rcvSettleMode;
             AmqpDeliveryState state;
-            AmqpBoolean resume = FALSE;
-            AmqpBoolean aborted = FALSE;
-            AmqpBoolean batchable = FALSE;
+            AmqpBoolean resume = 0;
+            AmqpBoolean aborted = 0;
+            AmqpBoolean batchable = 0;
         }
 
-//        list AmqpDisposition using AmqpList
-//        {
-//            required AmqpRole role;
-//            required AmqpDeliveryNumber first;
-//            AmqpDeliveryNumber last;
-//            AmqpBoolean settled = FALSE;
-//            AmqpDeliveryState state;
-//            AmqpBoolean batchable = FALSE;
-//        }
-//
-//        list AmqpDetach using AmqpList
-//        {
-//            required AmqpHandle handle;
-//            AmqpBoolean closed = FALSE;
-//            Error error;
-//        }
-//
-//        list AmqpEnd using AmqpList
-//        {
-//            AmqpError error;
-//        }
-//
+        list AmqpDisposition using AmqpList
+        {
+            required AmqpRole role;
+            required AmqpDeliveryNumber first;
+            AmqpDeliveryNumber last;
+            AmqpBoolean settled = 0;
+            AmqpDeliveryState state;
+            AmqpBoolean batchable = 0;
+        }
+
+        list AmqpDetach using AmqpList
+        {
+            required AmqpHandle handle;
+            AmqpBoolean closed = 0;
+            AmqpError error;
+        }
+
+        list AmqpEnd using AmqpList
+        {
+            AmqpError error;
+        }
+
         list AmqpClose using AmqpList
         {
             AmqpError error;
         }
-//
 //
 //        // 3.2 Message Format
 //        union AmqpSection switch (AmqpDescribedType)
@@ -711,12 +724,6 @@ scope protocol
 //            case DELETE_ON_NO_LINKS_OR_MESSAGES: AmqpList deleteOnNoLinksOrMessages;
 //        }
 //
-//        // 4.5 Coordination
-//        list AmqpCoordinator (AmqpList)
-//        {
-//            AmqpArray<AmqpTransactionCapability> capabilities;
-//        }
-//
 //        list AmqpDeclareList (AmqpList)
 //        {
 //            AmqpTxnId globalId;
@@ -736,15 +743,6 @@ scope protocol
 //        union AmqpDischarge switch (AmqpDescribedType)
 //        {
 //            case DISCHARGE: AmqpDischargeList value;
-//        }
-//
-//        enum AmqpTransactionCapability (AmqpSymbol)
-//        {
-//            LOCAL_TRANSACTIONS ("amqp:local-transactions"),
-//            DISTRIBUTED_TRANSACTIONS ("amqp:distributed-transactions"),
-//            PROMOTABLE_TRANSACTIONS ("amqp:promotable-transactions"),
-//            MULTI_TXNS_PER_SSN ("amqp:multi-txns-per-ssn"),
-//            MULTI_SSNS_PER_TXN ("amqp:multi-ssns-per-txn")
 //        }
 //
 //        // 5.3 Security Frame Bodies

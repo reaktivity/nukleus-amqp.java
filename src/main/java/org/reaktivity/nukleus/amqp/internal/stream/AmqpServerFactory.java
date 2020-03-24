@@ -1089,8 +1089,6 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 doEncodeHeader(header.major(), header.minor(), header.revision(), traceId, authorization);
             }
-
-            doNetworkEnd(traceId, authorization);
         }
 
         private void onDecodeFrameHeader(
