@@ -71,6 +71,16 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/close.exchange/client" })
+    public void shouldExchangeClose() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Test
     @Specification({
         "${route}/server/controller",
@@ -80,7 +90,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",

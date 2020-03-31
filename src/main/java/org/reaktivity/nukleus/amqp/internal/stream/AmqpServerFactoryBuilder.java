@@ -134,6 +134,7 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
             supplyInitialId,
             supplyReplyId,
             supplyBudgetId,
-            supplyTraceId);
+            supplyTraceId,
+            supplyTypeId);
     }
 }
