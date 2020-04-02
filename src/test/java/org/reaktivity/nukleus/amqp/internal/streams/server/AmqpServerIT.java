@@ -46,7 +46,7 @@ public class AmqpServerIT
         .counterValuesBufferCapacity(8192)
         .nukleus("amqp"::equals)
         .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
-        .configure(AMQP_CONTAINER_ID.name(), "reaktivity")
+        .configure(AMQP_CONTAINER_ID.name(), "server")
         .clean();
 
     @Rule
@@ -71,7 +71,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",

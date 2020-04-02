@@ -18,6 +18,11 @@ package org.reaktivity.nukleus.amqp.internal.stream;
 import static java.nio.ByteBuffer.allocateDirect;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
+import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpReceiverSettleMode;
+import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpRole;
+import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpSenderSettleMode;
 import static org.reaktivity.nukleus.budget.BudgetCreditor.NO_CREDITOR_INDEX;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
@@ -39,15 +44,14 @@ import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
 import org.reaktivity.nukleus.amqp.internal.AmqpNukleus;
 import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
 import org.reaktivity.nukleus.amqp.internal.types.OctetsFW;
-import org.reaktivity.nukleus.amqp.internal.types.ReceiverSettleMode;
-import org.reaktivity.nukleus.amqp.internal.types.Role;
-import org.reaktivity.nukleus.amqp.internal.types.SenderSettleMode;
 import org.reaktivity.nukleus.amqp.internal.types.String32FW;
 import org.reaktivity.nukleus.amqp.internal.types.String8FW;
 import org.reaktivity.nukleus.amqp.internal.types.StringFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpAttachFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpCloseFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorListFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFlowFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameType;
@@ -127,12 +131,13 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpAttachFW.Builder amqpAttachRW = new AmqpAttachFW.Builder();
     private final AmqpFlowFW.Builder amqpFlowRW = new AmqpFlowFW.Builder();
     private final AmqpCloseFW.Builder amqpCloseRW = new AmqpCloseFW.Builder();
+    private final AmqpErrorListFW.Builder amqpErrorListRW = new AmqpErrorListFW.Builder();
 
     private final RouteManager router;
     private final MutableDirectBuffer writeBuffer;
     private final MutableDirectBuffer extBuffer;
     private final MutableDirectBuffer frameBuffer;
-    private final MutableDirectBuffer encodeBuffer;
+    private final MutableDirectBuffer errorBuffer;
     private final MutableDirectBuffer terminusBuffer;
     private final MutableDirectBuffer terminusListBuffer;
     private final LongUnaryOperator supplyInitialId;
@@ -141,7 +146,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final LongSupplier supplyBudgetId;
 
     private final Long2ObjectHashMap<AmqpServer.AmqpServerStream> correlations;
-    // private final Long2ObjectHashMap<AmqpServerSession> sessions;
     private final MessageFunction<RouteFW> wrapRoute = (t, b, i, l) -> routeRO.wrap(b, i, i + l);
     private final int amqpTypeId;
 
@@ -159,7 +163,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
 
     private final int outgoingWindow;
-    private final String containerId;
+    private final String defaultContainerId;
 
     private final Map<AmqpFrameType, AmqpServerDecoder> decodersByFrameType;
     {
@@ -191,7 +195,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
         this.extBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
-        this.encodeBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
+        this.errorBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.frameBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.terminusBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.terminusListBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
@@ -203,7 +207,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.supplyTraceId = requireNonNull(supplyTraceId);
         this.correlations = new Long2ObjectHashMap<>();
         this.amqpTypeId = supplyTypeId.applyAsInt(AmqpNukleus.NAME);
-        this.containerId = config.containerId();
+        this.defaultContainerId = config.containerId();
         this.outgoingWindow = config.outgoingWindow();
     }
 
@@ -273,7 +277,7 @@ public final class AmqpServerFactory implements StreamFactory
         long routeId,
         long authorization,
         String targetAddress,
-        Role role)
+        AmqpRole role)
     {
         final MessagePredicate filter = (t, b, o, l) ->
         {
@@ -283,12 +287,17 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 final AmqpRouteExFW routeEx = ext.get(routeExRO::wrap);
                 final String targetAddressEx = routeEx.targetAddress().asString();
-                final Role roleEx = routeEx.role().get();
-                return targetAddressEx.equals(targetAddress) && roleEx.equals(role);
+                return targetAddressEx.equals(targetAddress) && routeEx.role().get().equals(role);
             }
             return true;
         };
         return router.resolve(routeId, authorization, filter, wrapRoute);
+    }
+
+    private int linkNameKey(
+        String name)
+    {
+        return System.identityHashCode(name.intern());
     }
 
     private void doBegin(
@@ -510,7 +519,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         if (open != null)
         {
-            server.onDecodeOpen(traceId, authorization);
+            server.onDecodeOpen(traceId, authorization, open);
             server.decoder = decodeFrameType;
             progress = open.limit();
         }
@@ -627,7 +636,7 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        server.onDecodeError(traceId, authorization);
+        server.onDecodeError(traceId, authorization, DECODE_ERROR);
         server.decoder = decodeIgnoreAll;
         return limit;
     }
@@ -642,6 +651,8 @@ public final class AmqpServerFactory implements StreamFactory
         private final long replySharedBudgetId;
 
         private final Int2ObjectHashMap<AmqpServerStream> streams;
+        private final Int2ObjectHashMap<AmqpSession> sessions;
+        private final Int2ObjectHashMap<AmqpServerStream> links;
 
         private int initialBudget;
         private int initialPadding;
@@ -659,6 +670,7 @@ public final class AmqpServerFactory implements StreamFactory
         private long encodeSlotTraceId;
         private int encodeSlotMaxLimit = Integer.MAX_VALUE;
 
+        private String containerId;
         private int channelId;
         private int nextTransferId;
         private String linkName;
@@ -684,6 +696,8 @@ public final class AmqpServerFactory implements StreamFactory
             this.replySharedBudgetId = budgetId;
             this.decoder = decodeHeader;
             this.streams = new Int2ObjectHashMap<>();
+            this.sessions = new Int2ObjectHashMap<>();
+            this.links = new Int2ObjectHashMap<>();
         }
 
         private void doEncodeHeader(
@@ -726,11 +740,11 @@ public final class AmqpServerFactory implements StreamFactory
         {
             int offsetOpenFrame = amqpFrameHeaderRW.limit();
 
-            // TODO: Check whether all fields are present, and encode fields if present
+            // TODO: Check whether all non required fields are present, and encode fields if present
 
             final String8FW containerIdRO = new String8FW.Builder()
                 .wrap(writeBuffer, 0, writeBuffer.capacity())
-                .set(containerId, UTF_8)
+                .set(defaultContainerId, UTF_8)
                 .build();
 
             final AmqpOpenFW open = amqpOpenRW
@@ -766,8 +780,8 @@ public final class AmqpServerFactory implements StreamFactory
 
             final AmqpBeginFW begin = amqpBeginRW
                 .wrap(frameBuffer, offsetBeginFrame, frameBuffer.capacity())
-                .remoteChannel(++channelId)
-                .nextOutgoingId(++nextTransferId)
+                .remoteChannel(channelId)
+                .nextOutgoingId(nextTransferId)
                 .incomingWindow(writeBuffer.capacity())
                 .outgoingWindow(outgoingWindow)
                 .build();
@@ -850,18 +864,30 @@ public final class AmqpServerFactory implements StreamFactory
         private void doEncodeClose(
             long traceId,
             long authorization,
-            AmqpCloseFW close)
+            AmqpErrorType errorType)
         {
-            // TODO : Add a case with error in AmqpCloseFW
             int offsetCloseFrame = amqpFrameHeaderRW.limit();
-            final AmqpCloseFW closeRW = close.fieldCount() == 0 ? close :
-                amqpCloseRW.wrap(frameBuffer, offsetCloseFrame, frameBuffer.capacity()).build();
+            final AmqpCloseFW.Builder closeRW = amqpCloseRW.wrap(frameBuffer, offsetCloseFrame, frameBuffer.capacity());
+
+            AmqpCloseFW closeRO;
+            if (errorType != null)
+            {
+                final MutableDirectBuffer errorListBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
+                AmqpErrorListFW errorList = amqpErrorListRW.wrap(errorListBuffer, 0, errorListBuffer.capacity())
+                    .condition(errorType)
+                    .build();
+                closeRO = closeRW.error(e -> e.errorList(errorList)).build();
+            }
+            else
+            {
+                closeRO = closeRW.build();
+            }
 
             AmqpFrameHeaderFW originalFrameHeader = amqpFrameHeaderRW.build();
 
             final AmqpFrameHeaderFW updatedFrameHeader =
                 amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
-                    .size(originalFrameHeader.sizeof() + closeRW.sizeof())
+                    .size(originalFrameHeader.sizeof() + closeRO.sizeof())
                     .doff(originalFrameHeader.doff())
                     .type(originalFrameHeader.type())
                     .channel(originalFrameHeader.channel())
@@ -871,7 +897,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             OctetsFW openWithFrameHeader = payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity())
                 .put(updatedFrameHeader.buffer(), 0, updatedFrameHeader.sizeof())
-                .put(closeRW.buffer(), offsetCloseFrame, closeRW.sizeof())
+                .put(closeRO.buffer(), offsetCloseFrame, closeRO.sizeof())
                 .build();
 
             doNetworkData(traceId, authorization, 0L, openWithFrameHeader);
@@ -1117,8 +1143,6 @@ public final class AmqpServerFactory implements StreamFactory
             cleanupBudgetCreditorIfNecessary();
             cleanupEncodeSlotIfNecessary();
 
-            // TODO: streams.values().forEach(s -> s.cleanup(traceId, authorization));
-
             doNetworkReset(traceId, authorization);
         }
 
@@ -1131,18 +1155,11 @@ public final class AmqpServerFactory implements StreamFactory
 
         private void onDecodeError(
             long traceId,
-            long authorization)
+            long authorization,
+            AmqpErrorType errorType)
         {
             cleanupStreams(traceId, authorization);
-            // TODO
-            // if (connected)
-            // {
-            //     doEncodeClose(traceId, authorization, reasonCode);
-            // }
-            // else
-            // {
-            //     doEncodeXXX(traceId, authorization, reasonCode);
-            // }
+            doEncodeClose(traceId, authorization, errorType);
             doNetworkEnd(traceId, authorization);
         }
 
@@ -1296,8 +1313,10 @@ public final class AmqpServerFactory implements StreamFactory
 
         private void onDecodeOpen(
             long traceId,
-            long authorization)
+            long authorization,
+            AmqpOpenFW open)
         {
+            containerId = open.containerId().asString();
             doEncodeOpen(traceId, authorization);
         }
 
@@ -1306,7 +1325,17 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpBeginFW begin)
         {
-            doEncodeBegin(traceId, authorization);
+            if (begin.hasRemoteChannel() || sessions.containsKey(channelId))
+            {
+                onDecodeError(traceId, authorization, NOT_ALLOWED);
+            }
+            else
+            {
+                channelId++;
+                nextTransferId++;
+                AmqpSession session = sessions.computeIfAbsent(channelId, s -> new AmqpSession());
+                session.onDecodeBegin(traceId, authorization);
+            }
         }
 
         private void onDecodeAttach(
@@ -1314,70 +1343,13 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpAttachFW attach)
         {
-            linkName = attach.name().asString();
-            handle = attach.handle();
-            AmqpRole role = attach.role();
-            boolean hasSourceAddress = attach.hasSource() && attach.source().sourceList().hasAddress();
-            boolean hasTargetAddress = attach.hasTarget() && attach.target().targetList().hasAddress();
-
-            final RouteFW route;
-            if (role == AmqpRole.RECEIVER)
+            if (!sessions.containsKey(channelId))
             {
-                route = resolveTarget(routeId, authorization, hasSourceAddress ?
-                    attach.source().sourceList().address().asString() : "", Role.RECEIVER);
+                onDecodeError(traceId, authorization, NOT_ALLOWED);
             }
             else
             {
-                route = resolveTarget(routeId, authorization, hasTargetAddress ?
-                    attach.target().targetList().address().asString() : "", Role.SENDER);
-            }
-
-            if (route != null)
-            {
-                final long newRouteId = route.correlationId();
-                AmqpServerStream stream = new AmqpServerStream(newRouteId);
-                String address = null;
-                switch (role)
-                {
-                case RECEIVER:
-                    stream.addRole(Role.RECEIVER);
-                    if (hasSourceAddress)
-                    {
-                        address = attach.source().sourceList().address().asString();
-                    }
-                    break;
-                case SENDER:
-                    stream.addRole(Role.SENDER);
-                    if (hasTargetAddress)
-                    {
-                        address = attach.target().targetList().address().asString();
-                    }
-                    break;
-                }
-
-                AmqpSenderSettleMode amqpSenderSettleMode = attach.sndSettleMode();
-                SenderSettleMode senderSettleMode;
-                switch (amqpSenderSettleMode)
-                {
-                case UNSETTLED:
-                    senderSettleMode = SenderSettleMode.UNSETTLED;
-                    break;
-                case SETTLED:
-                    senderSettleMode = SenderSettleMode.SETTLED;
-                    break;
-                default:
-                    senderSettleMode = SenderSettleMode.MIXED;
-                }
-
-                AmqpReceiverSettleMode amqpReceiverSettleMode = attach.rcvSettleMode();
-                ReceiverSettleMode receiverSettleMode = amqpReceiverSettleMode == AmqpReceiverSettleMode.SECOND ?
-                    ReceiverSettleMode.SECOND : ReceiverSettleMode.FIRST;
-
-                stream.doApplicationBeginIfNecessary(traceId, authorization, affinity, channelId, address,
-                    senderSettleMode, receiverSettleMode);
-                stream.doApplicationData(traceId, authorization, role == AmqpRole.RECEIVER ? Role.RECEIVER : Role.SENDER);
-
-                correlations.put(stream.replyId, stream);
+                sessions.get(channelId).onDecodeAttach(traceId, authorization, attach);
             }
         }
 
@@ -1393,7 +1365,10 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpCloseFW close)
         {
-            doEncodeClose(traceId, authorization, close);
+            if (close.fieldCount() == 0)
+            {
+                doEncodeClose(traceId, authorization, null);
+            }
         }
 
         private boolean isAmqpHeaderValid(
@@ -1458,16 +1433,43 @@ public final class AmqpServerFactory implements StreamFactory
             }
         }
 
+        private final class AmqpSession
+        {
+            private AmqpSession()
+            {
+                // TODO
+            }
+
+            private void onDecodeBegin(
+                long traceId,
+                long authorization)
+            {
+                doEncodeBegin(traceId, authorization);
+            }
+
+            private void onDecodeAttach(
+                long traceId,
+                long authorization,
+                AmqpAttachFW attach)
+            {
+                final int linkNameKey = linkNameKey(attach.name().asString());
+                if (links.containsKey(linkNameKey))
+                {
+                    onDecodeError(traceId, authorization, NOT_ALLOWED);
+                }
+                AmqpServerStream link = links.computeIfAbsent(linkNameKey, l -> new AmqpServerStream());
+                link.onDecodeAttach(traceId, authorization, attach);
+            }
+        }
+
         private class AmqpServerStream
         {
-            private final MessageConsumer application;
-
-            private final long routeId;
+            private MessageConsumer application;
+            private long newRouteId;
             private long initialId;
             private long replyId;
             private long budgetId;
             private int replyBudget;
-
             private int sharedReplyBudget;
 
             private int initialSlot = NO_SLOT;
@@ -1475,36 +1477,82 @@ public final class AmqpServerFactory implements StreamFactory
             private long initialSlotTraceId;
 
             private int state;
-            private Set<Role> roles;
+            private Set<AmqpRole> roles;
 
-            AmqpServerStream(
-                long routeId)
+            AmqpServerStream()
             {
-                this.routeId = routeId;
-                this.initialId = supplyInitialId.applyAsLong(routeId);
-                this.replyId = supplyReplyId.applyAsLong(initialId);
-                this.application = router.supplyReceiver(initialId);
-                this.roles = EnumSet.noneOf(Role.class);
+                this.roles = EnumSet.noneOf(AmqpRole.class);
             }
 
-            private void addRole(
-                Role role)
+            private void onDecodeAttach(
+                long traceId,
+                long authorization,
+                AmqpAttachFW attach)
             {
-                roles.add(role);
+                linkName = attach.name().asString();
+                handle = attach.handle();
+                AmqpRole role = attach.role();
+                boolean hasSourceAddress = attach.hasSource() && attach.source().sourceList().hasAddress();
+                boolean hasTargetAddress = attach.hasTarget() && attach.target().targetList().hasAddress();
+
+                final RouteFW route;
+                if (role == AmqpRole.RECEIVER)
+                {
+                    route = resolveTarget(routeId, authorization, hasSourceAddress ?
+                        attach.source().sourceList().address().asString() : "", AmqpRole.RECEIVER);
+                }
+                else
+                {
+                    route = resolveTarget(routeId, authorization, hasTargetAddress ?
+                        attach.target().targetList().address().asString() : "", AmqpRole.SENDER);
+                }
+
+                if (route != null)
+                {
+                    newRouteId = route.correlationId();
+                    initialId = supplyInitialId.applyAsLong(newRouteId);
+                    replyId = supplyReplyId.applyAsLong(initialId);
+                    application = router.supplyReceiver(initialId);
+                    String address = null;
+                    switch (role)
+                    {
+                    case RECEIVER:
+                        if (hasSourceAddress)
+                        {
+                            address = attach.source().sourceList().address().asString();
+                        }
+                        break;
+                    case SENDER:
+                        if (hasTargetAddress)
+                        {
+                            address = attach.target().targetList().address().asString();
+                        }
+                        break;
+                    }
+
+                    final AmqpSenderSettleMode amqpSenderSettleMode = attach.sndSettleMode();
+                    final AmqpReceiverSettleMode amqpReceiverSettleMode = attach.rcvSettleMode();
+
+                    doApplicationBeginIfNecessary(traceId, authorization, affinity, address, role, amqpSenderSettleMode,
+                        amqpReceiverSettleMode);
+                    doApplicationData(traceId, authorization, role);
+
+                    correlations.put(replyId, this);
+                }
             }
 
             private void doApplicationBeginIfNecessary(
                 long traceId,
                 long authorization,
                 long affinity,
-                int channel,
                 String targetAddress,
-                SenderSettleMode senderSettleMode,
-                ReceiverSettleMode receiverSettleMode)
+                AmqpRole role,
+                AmqpSenderSettleMode senderSettleMode,
+                AmqpReceiverSettleMode receiverSettleMode)
             {
                 if (!AmqpState.initialOpening(state))
                 {
-                    doApplicationBegin(traceId, authorization, affinity, channel, targetAddress, senderSettleMode,
+                    doApplicationBegin(traceId, authorization, affinity, targetAddress, role, senderSettleMode,
                         receiverSettleMode);
                 }
             }
@@ -1513,41 +1561,27 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization,
                 long affinity,
-                int channel,
                 String address,
-                SenderSettleMode senderSettleMode,
-                ReceiverSettleMode receiverSettleMode)
+                AmqpRole role,
+                AmqpSenderSettleMode senderSettleMode,
+                AmqpReceiverSettleMode receiverSettleMode)
             {
                 assert state == 0;
                 state = AmqpState.openingInitial(state);
-
-                final Role role;
-                if (roles.contains(Role.SENDER))
-                {
-                    role = Role.SENDER;
-                }
-                else if (roles.contains(Role.RECEIVER))
-                {
-                    role = Role.RECEIVER;
-                }
-                else
-                {
-                    role = null;
-                }
 
                 router.setThrottle(initialId, this::onApplicationInitial);
 
                 final AmqpBeginExFW beginEx = amqpBeginExRW.wrap(extBuffer, 0, extBuffer.capacity())
                     .typeId(amqpTypeId)
                     .containerId(containerId)
-                    .channel(channel)
+                    .channel(channelId)
                     .address(address)
-                    .role(r -> r.set(role))
-                    .senderSettleMode(s -> s.set(senderSettleMode))
-                    .receiverSettleMode(r -> r.set(receiverSettleMode))
+                    .role(r -> r.set(amqpRole(role)))
+                    .senderSettleMode(s -> s.set(amqpSenderSettleMode(senderSettleMode)))
+                    .receiverSettleMode(r -> r.set(amqpReceiverSettleMode(receiverSettleMode)))
                     .build();
 
-                doBegin(application, routeId, initialId, traceId, authorization, affinity, beginEx);
+                doBegin(application, newRouteId, initialId, traceId, authorization, affinity, beginEx);
 
                 if (initialSlot == NO_SLOT)
                 {
@@ -1563,14 +1597,13 @@ public final class AmqpServerFactory implements StreamFactory
             private void doApplicationData(
                 long traceId,
                 long authorization,
-                Role role)
+                AmqpRole role)
             {
                 assert AmqpState.initialOpening(state);
 
                 switch (role)
                 {
                 case SENDER:
-                    assert roles.contains(role);
                     // TODO
                     break;
                 }
@@ -1583,7 +1616,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 setInitialClosed();
 
-                doAbort(application, routeId, initialId, traceId, authorization, extension);
+                doAbort(application, newRouteId, initialId, traceId, authorization, extension);
             }
 
             private void doApplicationAbortIfNecessary(
@@ -1718,27 +1751,39 @@ public final class AmqpServerFactory implements StreamFactory
                 if (amqpBeginEx != null)
                 {
                     final String address = amqpBeginEx.address().asString();
-                    SenderSettleMode senderSettleMode = amqpBeginEx.senderSettleMode().get();
-                    AmqpSenderSettleMode amqpSenderSettleMode =
-                        senderSettleMode == SenderSettleMode.UNSETTLED ? AmqpSenderSettleMode.UNSETTLED :
-                            senderSettleMode == SenderSettleMode.SETTLED ? AmqpSenderSettleMode.SETTLED :
-                                AmqpSenderSettleMode.MIXED;
-                    ReceiverSettleMode receiverSettleMode = amqpBeginEx.receiverSettleMode().get();
-                    AmqpReceiverSettleMode amqpReceiverSettleMode =
-                        receiverSettleMode == ReceiverSettleMode.FIRST ? AmqpReceiverSettleMode.FIRST :
-                            AmqpReceiverSettleMode.SECOND;
+                    AmqpSenderSettleMode amqpSenderSettleMode = null;
+                    AmqpReceiverSettleMode amqpReceiverSettleMode = null;
+                    AmqpRole amqpRole = null;
+                    switch (amqpBeginEx.senderSettleMode().get())
+                    {
+                    case UNSETTLED:
+                        amqpSenderSettleMode = AmqpSenderSettleMode.UNSETTLED;
+                        break;
+                    case SETTLED:
+                        amqpSenderSettleMode = AmqpSenderSettleMode.SETTLED;
+                        break;
+                    }
+
+                    switch (amqpBeginEx.receiverSettleMode().get())
+                    {
+                    case FIRST:
+                        amqpReceiverSettleMode = AmqpReceiverSettleMode.FIRST;
+                        break;
+                    case SECOND:
+                        amqpReceiverSettleMode = AmqpReceiverSettleMode.SECOND;
+                        break;
+                    }
 
                     switch (amqpBeginEx.role().get())
                     {
                     case RECEIVER:
-                        doEncodeAttach(traceId, authorization, AmqpRole.RECEIVER, amqpSenderSettleMode, amqpReceiverSettleMode,
-                            address);
+                        amqpRole = AmqpRole.RECEIVER;
                         break;
                     case SENDER:
-                        doEncodeAttach(traceId, authorization, AmqpRole.SENDER, amqpSenderSettleMode, amqpReceiverSettleMode,
-                            address);
+                        amqpRole = AmqpRole.SENDER;
                         break;
                     }
+                    doEncodeAttach(traceId, authorization, amqpRole, amqpSenderSettleMode, amqpReceiverSettleMode, address);
                 }
             }
 
@@ -1839,7 +1884,7 @@ public final class AmqpServerFactory implements StreamFactory
                 roles.clear();
                 // streams.remove(topicKey(topicFilter));
 
-                doEnd(application, routeId, initialId, traceId, authorization, extension);
+                doEnd(application, newRouteId, initialId, traceId, authorization, extension);
             }
 
             private void flushReplyWindow(
@@ -1854,7 +1899,7 @@ public final class AmqpServerFactory implements StreamFactory
                     {
                         replyBudget += replyCredit;
 
-                        doWindow(application, routeId, replyId, traceId, authorization,
+                        doWindow(application, newRouteId, replyId, traceId, authorization,
                             replySharedBudgetId, replyCredit, 0);
                     }
                 }
@@ -1866,7 +1911,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 setReplyClosed();
 
-                doReset(application, routeId, replyId, traceId, authorization, EMPTY_OCTETS);
+                doReset(application, newRouteId, replyId, traceId, authorization, EMPTY_OCTETS);
             }
 
             private void doApplicationResetIfNecessary(
