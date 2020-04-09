@@ -77,6 +77,7 @@ import org.reaktivity.nukleus.amqp.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.SignalFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil;
 import org.reaktivity.nukleus.budget.BudgetCreditor;
 import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
@@ -292,7 +293,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 final AmqpRouteExFW routeEx = ext.get(routeExRO::wrap);
                 final String targetAddressEx = routeEx.targetAddress().asString();
-                return targetAddressEx.equals(targetAddress) && routeEx.role().get().equals(role);
+                return targetAddressEx.equals(targetAddress) && routeEx.capabilities().get().equals(role);
             }
             return true;
         };
@@ -1732,7 +1733,7 @@ public final class AmqpServerFactory implements StreamFactory
                     .typeId(amqpTypeId)
                     .channel(channelId)
                     .address(address)
-                    .role(r -> r.set(amqpRole(role)))
+                    .capabilities(r -> r.set(AmqpTypeUtil.amqpCapabilities(role)))
                     .senderSettleMode(s -> s.set(amqpSenderSettleMode(senderSettleMode)))
                     .receiverSettleMode(r -> r.set(amqpReceiverSettleMode(receiverSettleMode)))
                     .build();
@@ -1905,7 +1906,7 @@ public final class AmqpServerFactory implements StreamFactory
                 final AmqpBeginExFW amqpBeginEx = begin.extension().get(amqpBeginExRO::tryWrap);
                 if (amqpBeginEx != null)
                 {
-                    AmqpRole amqpRole = amqpRole(amqpBeginEx.role().get());
+                    AmqpRole amqpRole = amqpRole(amqpBeginEx.capabilities().get());
                     AmqpSenderSettleMode amqpSenderSettleMode = amqpSenderSettleMode(amqpBeginEx.senderSettleMode().get());
                     AmqpReceiverSettleMode amqpReceiverSettleMode =
                         amqpReceiverSettleMode(amqpBeginEx.receiverSettleMode().get());

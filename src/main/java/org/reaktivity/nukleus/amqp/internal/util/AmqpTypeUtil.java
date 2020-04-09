@@ -15,21 +15,22 @@
  */
 package org.reaktivity.nukleus.amqp.internal.util;
 
+import org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettleMode;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSenderSettleMode;
 
 public final class AmqpTypeUtil
 {
-    public static org.reaktivity.nukleus.amqp.internal.types.AmqpRole amqpRole(
+    public static AmqpCapabilities amqpCapabilities(
         AmqpRole role)
     {
         switch (role)
         {
         case RECEIVER:
-            return org.reaktivity.nukleus.amqp.internal.types.AmqpRole.RECEIVER;
+            return AmqpCapabilities.RECEIVE;
         case SENDER:
-            return org.reaktivity.nukleus.amqp.internal.types.AmqpRole.SENDER;
+            return AmqpCapabilities.SEND;
         default:
             throw new IllegalArgumentException("Illegal role: " + role);
         }
@@ -66,13 +67,13 @@ public final class AmqpTypeUtil
     }
 
     public static AmqpRole amqpRole(
-        org.reaktivity.nukleus.amqp.internal.types.AmqpRole role)
+        AmqpCapabilities role)
     {
         switch (role)
         {
-        case RECEIVER:
+        case RECEIVE:
             return AmqpRole.RECEIVER;
-        case SENDER:
+        case SEND:
             return AmqpRole.SENDER;
         default:
             throw new IllegalArgumentException("Illegal role: " + role);
