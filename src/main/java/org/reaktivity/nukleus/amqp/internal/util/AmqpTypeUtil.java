@@ -65,6 +65,50 @@ public final class AmqpTypeUtil
         }
     }
 
+    public static AmqpRole amqpRole(
+        org.reaktivity.nukleus.amqp.internal.types.AmqpRole role)
+    {
+        switch (role)
+        {
+        case RECEIVER:
+            return AmqpRole.RECEIVER;
+        case SENDER:
+            return AmqpRole.SENDER;
+        default:
+            throw new IllegalArgumentException("Illegal role: " + role);
+        }
+    }
+
+    public static AmqpSenderSettleMode amqpSenderSettleMode(
+        org.reaktivity.nukleus.amqp.internal.types.AmqpSenderSettleMode senderSettleMode)
+    {
+        switch (senderSettleMode)
+        {
+        case UNSETTLED:
+            return AmqpSenderSettleMode.UNSETTLED;
+        case SETTLED:
+            return AmqpSenderSettleMode.SETTLED;
+        case MIXED:
+            return AmqpSenderSettleMode.MIXED;
+        default:
+            throw new IllegalArgumentException("Illegal senderSettleMode: " + senderSettleMode);
+        }
+    }
+
+    public static AmqpReceiverSettleMode amqpReceiverSettleMode(
+        org.reaktivity.nukleus.amqp.internal.types.AmqpReceiverSettleMode receiverSettleMode)
+    {
+        switch (receiverSettleMode)
+        {
+        case FIRST:
+            return AmqpReceiverSettleMode.FIRST;
+        case SECOND:
+            return AmqpReceiverSettleMode.SECOND;
+        default:
+            throw new IllegalArgumentException("Illegal receiverSettleMode: " + receiverSettleMode);
+        }
+    }
+
     private AmqpTypeUtil()
     {
         // utility class, no instances
