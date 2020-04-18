@@ -28,9 +28,9 @@ public final class AmqpTypeUtil
         switch (role)
         {
         case RECEIVER:
-            return AmqpCapabilities.RECEIVE;
+            return AmqpCapabilities.RECEIVE_ONLY;
         case SENDER:
-            return AmqpCapabilities.SEND;
+            return AmqpCapabilities.SEND_ONLY;
         default:
             throw new IllegalArgumentException("Illegal role: " + role);
         }
@@ -71,10 +71,10 @@ public final class AmqpTypeUtil
     {
         switch (role)
         {
-        case RECEIVE:
-            return AmqpRole.RECEIVER;
-        case SEND:
+        case RECEIVE_ONLY:
             return AmqpRole.SENDER;
+        case SEND_ONLY:
+            return AmqpRole.RECEIVER;
         default:
             throw new IllegalArgumentException("Illegal role: " + role);
         }

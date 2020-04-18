@@ -29,6 +29,7 @@ import org.junit.rules.TestRule;
 import org.junit.rules.Timeout;
 import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
+import org.reaktivity.reaktor.ReaktorConfiguration;
 import org.reaktivity.reaktor.test.ReaktorRule;
 
 public class AmqpServerIT
@@ -49,6 +50,7 @@ public class AmqpServerIT
         .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
         .configure(AMQP_CONTAINER_ID, "server")
         .configure(AMQP_MAX_FRAME_SIZE, 131072L)
+        .configure(ReaktorConfiguration.REAKTOR_DRAIN_ON_CLOSE, false)
         .clean();
 
     @Rule
@@ -184,6 +186,37 @@ public class AmqpServerIT
         "${client}/link/transfer.to.server.at.most.once/client",
         "${server}/send.to.server.at.most.once/server" })
     public void shouldSendToServerAtMostOnce() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/incoming.window.exceeded/client",
+        "${server}/incoming.window.exceeded/server" })
+    public void shouldEndSessionWhenIncomingWindowExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/send.to.client.multiple.sessions/client",
+        "${server}/send.to.client.through.multiple.sessions/server" })
+    public void shouldSendToClientThroughMultipleSessions() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.with.more.to.client/client",
+        "${server}/send.to.client.fragmented/server" })
+    public void shouldSendToClientFragmented() throws Exception
     {
         k3po.finish();
     }

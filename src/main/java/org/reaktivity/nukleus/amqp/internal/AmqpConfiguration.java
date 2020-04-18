@@ -23,6 +23,7 @@ public class AmqpConfiguration extends Configuration
     public static final IntPropertyDef AMQP_CHANNEL_MAX;
     public static final LongPropertyDef AMQP_MAX_FRAME_SIZE;
     public static final IntPropertyDef AMQP_OUTGOING_WINDOW;
+    public static final LongPropertyDef AMQP_INIT_DEVIVERY_COUNT;
     private static final ConfigurationDef AMQP_CONFIG;
 
     static
@@ -32,6 +33,7 @@ public class AmqpConfiguration extends Configuration
         AMQP_CHANNEL_MAX = config.property("channel.max", 65535);
         AMQP_MAX_FRAME_SIZE = config.property("max.frame.size", 4294967295L);
         AMQP_OUTGOING_WINDOW = config.property("outgoing.window", Integer.MAX_VALUE);
+        AMQP_INIT_DEVIVERY_COUNT = config.property("initial.delivery.count", 0L);
         AMQP_CONFIG = config;
     }
 
@@ -59,5 +61,10 @@ public class AmqpConfiguration extends Configuration
     public int outgoingWindow()
     {
         return AMQP_OUTGOING_WINDOW.getAsInt(this);
+    }
+
+    public long initialDeliveryCount()
+    {
+        return AMQP_INIT_DEVIVERY_COUNT.getAsLong(this);
     }
 }

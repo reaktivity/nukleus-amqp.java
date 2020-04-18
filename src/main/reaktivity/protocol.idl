@@ -673,6 +673,14 @@ scope protocol
 //            case VALUE: AmqpValue amqpValue;
 //            case FOOTER: AmqpMap footer;
 //        }
+
+        struct Message
+        {
+            AmqpDescribedType sectionType;
+            AmqpType messageType;
+            uint32 messageSize;
+        }
+
 //
 //        list AmqpHeader (AmqpList)
 //        {
