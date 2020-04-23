@@ -343,12 +343,6 @@ scope protocol
 //        typedef AmqpFields as AmqpNodeProperties;
         typedef AmqpBinary as AmqpTxnId;
 
-        struct Performative
-        {
-            AmqpType domainId; // 0x00
-            AmqpULong descriptorId; // 0x53 0xXX
-        }
-
         enum AmqpRole (uint8)
         {
             SENDER (0x42),
