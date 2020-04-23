@@ -28,19 +28,6 @@ scope protocol
             uint8 revision;
         }
 
-//        union AmqpPerformative switch (AmqpDescribedType)
-//        {
-//            case OPEN: AmqpOpen open;
-//            case BEGIN: AmqpBegin begin;
-//            case ATTACH: AmqpAttach attach;
-//            case FLOW: AmqpFlow flow;
-//            case TRANSFER: AmqpTransfer transfer;
-//            case DISPOSITION: AmqpDisposition disposition;
-//            case DETACH: AmqpDetach detach;
-//            case END: AmqpEnd end;
-//            case CLOSE: AmqpClose close;
-//        }
-
         enum AmqpType (uint8)
         {
             DESCRIBED (0x00),
@@ -362,15 +349,6 @@ scope protocol
             AmqpULong descriptorId; // 0x53 0xXX
         }
 
-        struct AmqpFrameHeader
-        {
-            uint32 size;
-            uint8 doff;
-            uint8 type;
-            uint16 channel;
-            Performative performative;
-        }
-
         enum AmqpRole (uint8)
         {
             SENDER (0x42),
@@ -659,6 +637,29 @@ scope protocol
         {
             AmqpError error;
         }
+
+        union AmqpPerformative switch (AmqpDescribedType)
+        {
+            case OPEN: AmqpOpen open;
+            case BEGIN: AmqpBegin begin;
+            case ATTACH: AmqpAttach attach;
+            case FLOW: AmqpFlow flow;
+            case TRANSFER: AmqpTransfer transfer;
+            case DISPOSITION: AmqpDisposition disposition;
+            case DETACH: AmqpDetach detach;
+            case END: AmqpEnd end;
+            case CLOSE: AmqpClose close;
+        }
+
+        struct AmqpFrameHeader
+        {
+            uint32 size;
+            uint8 doff;
+            uint8 type;
+            uint16 channel;
+            AmqpPerformative performative;
+        }
+
 //
 //        // 3.2 Message Format
 //        union AmqpSection switch (AmqpDescribedType)

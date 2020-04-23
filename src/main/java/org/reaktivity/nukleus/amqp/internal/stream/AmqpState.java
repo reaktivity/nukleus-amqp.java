@@ -32,7 +32,7 @@ public final class AmqpState
         return state | INITIAL_OPENING;
     }
 
-    static int openedInitial(
+    static int openInitial(
         int state)
     {
         return openingInitial(state) | INITIAL_OPENED;
@@ -56,7 +56,7 @@ public final class AmqpState
         return state | INITIAL_CLOSING;
     }
 
-    static int closedInitial(
+    static int closeInitial(
         int state)
     {
         return closingInitial(state) | INITIAL_CLOSED;
@@ -80,7 +80,7 @@ public final class AmqpState
         return state | REPLY_OPENING;
     }
 
-    static int openedReply(
+    static int openReply(
         int state)
     {
         return openingReply(state) | REPLY_OPENED;
@@ -104,7 +104,7 @@ public final class AmqpState
         return state | REPLY_CLOSING;
     }
 
-    static int closedReply(
+    static int closeReply(
         int state)
     {
         return closingReply(state) | REPLY_CLOSED;
