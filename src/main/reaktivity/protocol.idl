@@ -654,7 +654,6 @@ scope protocol
             AmqpPerformative performative;
         }
 
-//
 //        // 3.2 Message Format
 //        union AmqpSection switch (AmqpDescribedType)
 //        {
@@ -669,11 +668,11 @@ scope protocol
 //            case FOOTER: AmqpMap footer;
 //        }
 
-        struct Message
+        struct AmqpValueHeader
         {
             AmqpDescribedType sectionType;
-            AmqpType messageType;
-            uint32 messageSize;
+            AmqpType valueType;
+            uint32 valueLength;
         }
 
 //
@@ -684,23 +683,6 @@ scope protocol
 //            AmqpMilliseconds ttl;
 //            AmqpBoolean firstAcquirer;
 //            AmqpUInt deliveryCount;
-//        }
-//
-//        list AmqpProperties (AmqpList)
-//        {
-//            AmqpMessageId messageId;
-//            AmqpBinary userId;
-//            AmqpAddress to;
-//            AmqpString subject;
-//            AmqpAddress replyTo;
-//            AmqpMessageId correlationId;
-//            AmqpSymbol contentType;
-//            AmqpSymbol contentEncoding;
-//            AmqpTimestamp absoluteExpiryTime;
-//            AmqpTimestamp creationTime;
-//            AmqpString groupId;
-//            AmqpSequenceNo group-sequence;
-//            AmqpString replyToGroupId;
 //        }
 //
 //        variant AmqpMessageId switch (AmqpType)
@@ -718,6 +700,24 @@ scope protocol
 //            case STRING4:
 //                AmqpString;
 //        }
+
+        list AmqpProperties using AmqpList
+        {
+            AmqpString messageId; // TODO: AmqpMessageId messageId
+            AmqpBinary userId;
+            AmqpAddress to;
+            AmqpString subject;
+            AmqpAddress replyTo;
+            AmqpString correlationId; // TODO: AmqpMessageId messageId
+            AmqpSymbol contentType;
+            AmqpSymbol contentEncoding;
+            AmqpTimestamp absoluteExpiryTime;
+            AmqpTimestamp creationTime;
+            AmqpString groupId;
+            AmqpSequenceNo groupSequence;
+            AmqpString replyToGroupId;
+        }
+
 //
 //        union AmqpLifetimePolicy switch (AmqpDescribedType)
 //        {

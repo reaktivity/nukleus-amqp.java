@@ -220,4 +220,24 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.annotations/client",
+        "${server}/send.to.client.with.annotations/server" })
+    public void shouldSendToClientWithAnnotations() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.properties/client",
+        "${server}/send.to.client.with.properties/server" })
+    public void shouldSendToClientWithProperties() throws Exception
+    {
+        k3po.finish();
+    }
 }
