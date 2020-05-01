@@ -19,6 +19,19 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.RECEIVE_ONLY;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_ONLY;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_ABSOLUTE_EXPIRY_TIME;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CONTENT_ENCODING;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CONTENT_TYPE;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CORRELATION_ID;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CREATION_TIME;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_GROUP_ID;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_GROUP_SEQUENCE;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_MESSAGE_ID;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_REPLY_TO;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_REPLY_TO_GROUP_ID;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_SUBJECT;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_TO;
+import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_USER_ID;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.PROPERTIES;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
@@ -1102,44 +1115,47 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     switch (field.kind())
                     {
-                    case 0:
+                    case KIND_MESSAGE_ID:
                         amqpPropertiesRW.messageId(field.messageId().stringtype());
                         break;
-                    case 1:
+                    case KIND_USER_ID:
                         final BoundedOctetsFW userId = amqpBinaryRW.wrap(stringBuffer, 0, stringBuffer.capacity())
                             .set(field.userId().bytes().value(), 0, field.userId().length())
                             .build()
                             .get();
                         amqpPropertiesRW.userId(userId);
                         break;
-                    case 2:
+                    case KIND_TO:
                         amqpPropertiesRW.to(field.to());
                         break;
-                    case 3:
+                    case KIND_SUBJECT:
                         amqpPropertiesRW.subject(field.subject());
                         break;
-                    case 4:
+                    case KIND_REPLY_TO:
                         amqpPropertiesRW.replyTo(field.replyTo());
                         break;
-                    case 5:
+                    case KIND_CORRELATION_ID:
                         amqpPropertiesRW.correlationId(field.correlationId().stringtype());
                         break;
-                    case 6:
+                    case KIND_CONTENT_TYPE:
                         amqpPropertiesRW.contentType(field.contentType());
                         break;
-                    case 7:
+                    case KIND_CONTENT_ENCODING:
+                        amqpPropertiesRW.contentEncoding(field.contentEncoding());
+                        break;
+                    case KIND_ABSOLUTE_EXPIRY_TIME:
                         amqpPropertiesRW.absoluteExpiryTime(field.absoluteExpiryTime());
                         break;
-                    case 8:
+                    case KIND_CREATION_TIME:
                         amqpPropertiesRW.creationTime(field.creationTime());
                         break;
-                    case 9:
+                    case KIND_GROUP_ID:
                         amqpPropertiesRW.groupId(field.groupId());
                         break;
-                    case 10:
+                    case KIND_GROUP_SEQUENCE:
                         amqpPropertiesRW.groupSequence(field.groupSequence());
                         break;
-                    case 11:
+                    case KIND_REPLY_TO_GROUP_ID:
                         amqpPropertiesRW.replyToGroupId(field.replyToGroupId());
                         break;
                     }
