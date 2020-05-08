@@ -240,4 +240,14 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.application.properties/client",
+        "${server}/send.to.client.with.application.properties/server" })
+    public void shouldSendToClientWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
 }
