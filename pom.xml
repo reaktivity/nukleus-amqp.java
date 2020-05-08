@@ -8,6 +8,7 @@
   <artifactId>nukleus-amqp</artifactId>
   <version>0.1</version>
   <name>AMQP Nukleus Implementation</name>
+  <description>AMQP Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-amqp.java</url>
 
   <licenses>
