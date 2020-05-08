@@ -19,19 +19,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.RECEIVE_ONLY;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_ONLY;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_ABSOLUTE_EXPIRY_TIME;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CONTENT_ENCODING;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CONTENT_TYPE;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CORRELATION_ID;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_CREATION_TIME;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_GROUP_ID;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_GROUP_SEQUENCE;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_MESSAGE_ID;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_REPLY_TO;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_REPLY_TO_GROUP_ID;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_SUBJECT;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_TO;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW.KIND_USER_ID;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.APPLICATION_PROPERTIES;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.PROPERTIES;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
@@ -62,8 +50,8 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
 import org.reaktivity.nukleus.amqp.internal.AmqpNukleus;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationFW;
+import org.reaktivity.nukleus.amqp.internal.types.AmqpApplicationPropertyFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities;
-import org.reaktivity.nukleus.amqp.internal.types.AmqpMessagePropertyFW;
 import org.reaktivity.nukleus.amqp.internal.types.ArrayFW;
 import org.reaktivity.nukleus.amqp.internal.types.BoundedOctetsFW;
 import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
@@ -177,6 +165,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpErrorListFW.Builder amqpErrorListRW = new AmqpErrorListFW.Builder();
     private final AmqpValueHeaderFW.Builder amqpValueHeaderRW = new AmqpValueHeaderFW.Builder();
     private final AmqpStringFW.Builder amqpStringRW = new AmqpStringFW.Builder();
+    private final AmqpStringFW.Builder amqpValueRW = new AmqpStringFW.Builder();
     private final AmqpSymbolFW.Builder amqpSymbolRW = new AmqpSymbolFW.Builder();
     private final AmqpSourceListFW.Builder amqpSourceListRW = new AmqpSourceListFW.Builder();
     private final AmqpTargetListFW.Builder amqpTargetListRW = new AmqpTargetListFW.Builder();
@@ -189,7 +178,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpPropertiesFW.Builder amqpPropertiesRW = new AmqpPropertiesFW.Builder();
 
     private final MutableInteger minimum = new MutableInteger();
-    private final MutableInteger keyOffset = new MutableInteger();
     private final MutableInteger valueOffset = new MutableInteger();
 
     private final RouteManager router;
@@ -953,8 +941,11 @@ public final class AmqpServerFactory implements StreamFactory
             extraBufferOffset = deliveryTag.limit();
             final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = annotations(dataEx.annotations(), extraBufferOffset);
             extraBufferOffset = annotations == null ? extraBufferOffset : annotations.limit();
-            final AmqpPropertiesFW properties = properties(dataEx.properties(), extraBufferOffset);
+            final AmqpPropertiesFW properties = properties(dataEx, extraBufferOffset);
             extraBufferOffset = properties == null ? extraBufferOffset : properties.limit();
+            final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties =
+                applicationProperties(dataEx.applicationProperties(), extraBufferOffset);
+            extraBufferOffset = applicationProperties == null ? extraBufferOffset : applicationProperties.limit();
             int payloadIndex = 0;
             int payloadSize = payload.sizeof();
             int originalPayloadSize = payloadSize;
@@ -966,6 +957,8 @@ public final class AmqpServerFactory implements StreamFactory
             final int valueHeaderSize = valueHeader.sizeof();
             final int annotationsSize = annotations == null ? 0 : DESCRIBED_TYPE_SIZE + annotations.sizeof();
             final int propertiesSize = properties == null ? 0 : DESCRIBED_TYPE_SIZE + properties.sizeof();
+            final int applicationPropertiesSize = applicationProperties == null ? 0 :
+                DESCRIBED_TYPE_SIZE + applicationProperties.sizeof();
             while (payloadIndex < originalPayloadSize)
             {
                 AmqpTransferFW.Builder transferBuilder = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE,
@@ -982,8 +975,8 @@ public final class AmqpServerFactory implements StreamFactory
                 payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity());
                 if (payloadIndex == 0)
                 {
-                    if (FRAME_HEADER_SIZE + transferFrameSize + annotationsSize + propertiesSize + valueHeaderSize + payloadSize >
-                        initialMaxFrameSize)
+                    if (FRAME_HEADER_SIZE + transferFrameSize + annotationsSize + propertiesSize + applicationPropertiesSize +
+                        valueHeaderSize + payloadSize > initialMaxFrameSize)
                     {
                         transfer = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
                             .handle(handle)
@@ -994,31 +987,12 @@ public final class AmqpServerFactory implements StreamFactory
                             .more(1)
                             .build();
                         payloadSize = initialMaxFrameSize - FRAME_HEADER_SIZE - transferFrameSize - annotationsSize -
-                            propertiesSize - valueHeaderSize;
+                            propertiesSize - applicationPropertiesSize - valueHeaderSize;
                     }
                     AmqpFrameHeaderFW transferFrame = setTransferFrame(transfer, FRAME_HEADER_SIZE + transfer.sizeof() +
-                        annotationsSize + propertiesSize + valueHeaderSize + payloadSize, channel);
-                    AmqpDescribedTypeFW messageAnnotationsType = null;
-                    if (annotations != null)
-                    {
-                        messageAnnotationsType = amqpDescribedTypeRW.wrap(frameBuffer, transferFrame.limit(),
-                            frameBuffer.capacity())
-                            .set(MESSAGE_ANNOTATIONS)
-                            .build();
-                        payloadRW.put(messageAnnotationsType.buffer(), messageAnnotationsType.offset(),
-                            messageAnnotationsType.sizeof())
-                            .put(annotations.buffer(), annotations.offset(), annotations.sizeof());
-                    }
-                    if (properties != null)
-                    {
-                        AmqpDescribedTypeFW propertiesType = amqpDescribedTypeRW.wrap(frameBuffer, annotations == null ?
-                                transferFrame.limit() : messageAnnotationsType.limit(),
-                            frameBuffer.capacity())
-                            .set(PROPERTIES)
-                            .build();
-                        payloadRW.put(propertiesType.buffer(), propertiesType.offset(), propertiesType.sizeof())
-                            .put(properties.buffer(), properties.offset(), properties.sizeof());
-                    }
+                        annotationsSize + propertiesSize + applicationPropertiesSize + valueHeaderSize + payloadSize, channel);
+                    int sectionOffset = transferFrame.limit();
+                    amqpSection(annotations, properties, applicationProperties, sectionOffset);
                     payloadRW.put(valueHeader.buffer(), valueHeader.offset(), valueHeader.sizeof());
                 }
                 else
@@ -1045,6 +1019,45 @@ public final class AmqpServerFactory implements StreamFactory
                 OctetsFW transferWithFrameHeader = payloadRW.build();
                 doNetworkData(traceId, authorization, 0L, transferWithFrameHeader);
                 payloadIndex += payloadSize;
+            }
+        }
+
+        private void amqpSection(
+            AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations,
+            AmqpPropertiesFW properties,
+            AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties,
+            int sectionOffset)
+        {
+            if (annotations != null)
+            {
+                AmqpDescribedTypeFW messageAnnotationsType = amqpDescribedTypeRW.wrap(frameBuffer, sectionOffset,
+                    frameBuffer.capacity())
+                    .set(MESSAGE_ANNOTATIONS)
+                    .build();
+                payloadRW.put(messageAnnotationsType.buffer(), messageAnnotationsType.offset(),
+                    messageAnnotationsType.sizeof())
+                    .put(annotations.buffer(), annotations.offset(), annotations.sizeof());
+                sectionOffset = messageAnnotationsType.limit();
+            }
+            if (properties != null)
+            {
+                AmqpDescribedTypeFW propertiesType = amqpDescribedTypeRW.wrap(frameBuffer, sectionOffset,
+                    frameBuffer.capacity())
+                    .set(PROPERTIES)
+                    .build();
+                payloadRW.put(propertiesType.buffer(), propertiesType.offset(), propertiesType.sizeof())
+                    .put(properties.buffer(), properties.offset(), properties.sizeof());
+                sectionOffset = propertiesType.limit();
+            }
+            if (applicationProperties != null)
+            {
+                AmqpDescribedTypeFW applicationPropertiesType = amqpDescribedTypeRW.wrap(frameBuffer, sectionOffset,
+                    frameBuffer.capacity())
+                    .set(APPLICATION_PROPERTIES)
+                    .build();
+                payloadRW.put(applicationPropertiesType.buffer(), applicationPropertiesType.offset(),
+                    applicationPropertiesType.sizeof())
+                    .put(applicationProperties.buffer(), applicationProperties.offset(), applicationProperties.sizeof());
             }
         }
 
@@ -1098,70 +1111,99 @@ public final class AmqpServerFactory implements StreamFactory
                 });
                 messageAnnotations = amqpMapRW.build();
             }
-            keyOffset.value = 0;
-            valueOffset.value = 0;
             return messageAnnotations;
         }
 
         private AmqpPropertiesFW properties(
-            ArrayFW<AmqpMessagePropertyFW> propertiesArray,
+            AmqpDataExFW dataEx,
             int bufferOffset)
         {
             AmqpPropertiesFW properties = null;
-            if (propertiesArray.fieldCount() > 0)
+            if (dataEx.properties().fieldCount() > 0)
             {
                 amqpPropertiesRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
-                propertiesArray.forEach(field ->
+                if (dataEx.properties().hasMessageId())
                 {
-                    switch (field.kind())
-                    {
-                    case KIND_MESSAGE_ID:
-                        amqpPropertiesRW.messageId(field.messageId().stringtype());
-                        break;
-                    case KIND_USER_ID:
-                        final BoundedOctetsFW userId = amqpBinaryRW.wrap(stringBuffer, 0, stringBuffer.capacity())
-                            .set(field.userId().bytes().value(), 0, field.userId().length())
-                            .build()
-                            .get();
-                        amqpPropertiesRW.userId(userId);
-                        break;
-                    case KIND_TO:
-                        amqpPropertiesRW.to(field.to());
-                        break;
-                    case KIND_SUBJECT:
-                        amqpPropertiesRW.subject(field.subject());
-                        break;
-                    case KIND_REPLY_TO:
-                        amqpPropertiesRW.replyTo(field.replyTo());
-                        break;
-                    case KIND_CORRELATION_ID:
-                        amqpPropertiesRW.correlationId(field.correlationId().stringtype());
-                        break;
-                    case KIND_CONTENT_TYPE:
-                        amqpPropertiesRW.contentType(field.contentType());
-                        break;
-                    case KIND_CONTENT_ENCODING:
-                        amqpPropertiesRW.contentEncoding(field.contentEncoding());
-                        break;
-                    case KIND_ABSOLUTE_EXPIRY_TIME:
-                        amqpPropertiesRW.absoluteExpiryTime(field.absoluteExpiryTime());
-                        break;
-                    case KIND_CREATION_TIME:
-                        amqpPropertiesRW.creationTime(field.creationTime());
-                        break;
-                    case KIND_GROUP_ID:
-                        amqpPropertiesRW.groupId(field.groupId());
-                        break;
-                    case KIND_GROUP_SEQUENCE:
-                        amqpPropertiesRW.groupSequence(field.groupSequence());
-                        break;
-                    case KIND_REPLY_TO_GROUP_ID:
-                        amqpPropertiesRW.replyToGroupId(field.replyToGroupId());
-                        break;
-                    }
-                });
+                    amqpPropertiesRW.messageId(dataEx.properties().messageId().stringtype());
+                }
+                if (dataEx.properties().hasUserId())
+                {
+                    final BoundedOctetsFW userId = amqpBinaryRW.wrap(stringBuffer, 0, stringBuffer.capacity())
+                        .set(dataEx.properties().userId().bytes().value(), 0, dataEx.properties().userId().length())
+                        .build()
+                        .get();
+                    amqpPropertiesRW.userId(userId);
+                }
+                if (dataEx.properties().hasTo())
+                {
+                    amqpPropertiesRW.to(dataEx.properties().to());
+                }
+                if (dataEx.properties().hasSubject())
+                {
+                    amqpPropertiesRW.subject(dataEx.properties().subject());
+                }
+                if (dataEx.properties().hasReplyTo())
+                {
+                    amqpPropertiesRW.replyTo(dataEx.properties().replyTo());
+                }
+                if (dataEx.properties().hasCorrelationId())
+                {
+                    amqpPropertiesRW.correlationId(dataEx.properties().correlationId().stringtype());
+                }
+                if (dataEx.properties().hasContentType())
+                {
+                    amqpPropertiesRW.contentType(dataEx.properties().contentType());
+                }
+                if (dataEx.properties().hasContentEncoding())
+                {
+                    amqpPropertiesRW.contentEncoding(dataEx.properties().contentEncoding());
+                }
+                if (dataEx.properties().hasAbsoluteExpiryTime())
+                {
+                    amqpPropertiesRW.absoluteExpiryTime(dataEx.properties().absoluteExpiryTime());
+                }
+                if (dataEx.properties().hasCreationTime())
+                {
+                    amqpPropertiesRW.creationTime(dataEx.properties().creationTime());
+                }
+                if (dataEx.properties().hasGroupId())
+                {
+                    amqpPropertiesRW.groupId(dataEx.properties().groupId());
+                }
+                if (dataEx.properties().hasGroupSequence())
+                {
+                    amqpPropertiesRW.groupSequence(dataEx.properties().groupSequence());
+                }
+                if (dataEx.properties().hasReplyToGroupId())
+                {
+                    amqpPropertiesRW.replyToGroupId(dataEx.properties().replyToGroupId());
+                }
                 properties = amqpPropertiesRW.build();
             }
+            return properties;
+        }
+
+        private AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties(
+            ArrayFW<AmqpApplicationPropertyFW> applicationProperties,
+            int bufferOffset)
+        {
+            AmqpMapFW<AmqpValueFW, AmqpValueFW> properties = null;
+            if (applicationProperties.fieldCount() > 0)
+            {
+                amqpMapRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
+                applicationProperties.forEach(pair ->
+                {
+                    AmqpStringFW key = amqpStringRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
+                        .set(pair.key()).build();
+                    valueOffset.value += key.limit();
+                    AmqpStringFW value = amqpValueRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
+                        .set(pair.value()).build();
+                    valueOffset.value += value.limit();
+                    amqpMapRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
+                });
+                properties = amqpMapRW.build();
+            }
+            valueOffset.value = 0;
             return properties;
         }
 
@@ -1384,7 +1426,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 final long traceId = end.traceId();
 
-                cleanupDecodeSlotIfNecessary();
+                cleanupStreams(traceId, authorization);
 
                 doNetworkEndIfNecessary(traceId, authorization);
             }
