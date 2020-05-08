@@ -701,7 +701,7 @@ scope protocol
 //                AmqpString;
 //        }
 
-        list AmqpProperties using AmqpList
+        list AmqpMessageProperties using AmqpList
         {
             AmqpString messageId; // TODO: AmqpMessageId messageId
             AmqpBinary userId;
