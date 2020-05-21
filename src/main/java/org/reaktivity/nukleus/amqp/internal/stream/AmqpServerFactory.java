@@ -114,6 +114,7 @@ public final class AmqpServerFactory implements StreamFactory
 
     private static final int FRAME_HEADER_SIZE = 11;
     private static final int DESCRIBED_TYPE_SIZE = 3;
+    private static final int PADDING = 300;
     private static final long PROTOCOL_HEADER = 0x414D5150_00010000L;
 
     private final RouteFW routeRO = new RouteFW();
@@ -424,7 +425,8 @@ public final class AmqpServerFactory implements StreamFactory
         long authorization,
         long budgetId,
         int credit,
-        int padding)
+        int padding,
+        int min)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
@@ -434,6 +436,7 @@ public final class AmqpServerFactory implements StreamFactory
             .budgetId(budgetId)
             .credit(credit)
             .padding(padding)
+            .minimum(min)
             .build();
 
         receiver.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
@@ -543,7 +546,6 @@ public final class AmqpServerFactory implements StreamFactory
             default:
                 throw new IllegalStateException("Unexpected value: " + frameType);
             }
-            // server.onDecodeFrameHeader(frameHeader);
             server.decoder = decoder;
             progress = frame.offset();
         }
@@ -832,7 +834,7 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpBeginFW begin = amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
                 .remoteChannel(channel)
                 .nextOutgoingId(nextOutgoingId)
-                .incomingWindow(writeBuffer.capacity())
+                .incomingWindow(bufferPool.slotCapacity())
                 .outgoingWindow(outgoingWindow)
                 .build();
 
@@ -919,6 +921,7 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization,
             int channel,
+            int remoteIncomingWindow,
             long handle,
             int flags,
             OctetsFW extension,
@@ -960,7 +963,7 @@ public final class AmqpServerFactory implements StreamFactory
             final int propertiesSize = properties == null ? 0 : DESCRIBED_TYPE_SIZE + properties.sizeof();
             final int applicationPropertiesSize = applicationProperties == null ? 0 :
                 DESCRIBED_TYPE_SIZE + applicationProperties.sizeof();
-            while (payloadIndex < originalPayloadSize)
+            while (payloadIndex < originalPayloadSize && remoteIncomingWindow >= 0)
             {
                 AmqpTransferFW.Builder transferBuilder = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE,
                     frameBuffer.capacity());
@@ -977,7 +980,7 @@ public final class AmqpServerFactory implements StreamFactory
                 if (payloadIndex == 0)
                 {
                     if (FRAME_HEADER_SIZE + transferFrameSize + annotationsSize + propertiesSize + applicationPropertiesSize +
-                        valueHeaderSize + payloadSize > initialMaxFrameSize)
+                        valueHeaderSize + payloadSize > initialMaxFrameSize || flags == 2)
                     {
                         transfer = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
                             .handle(handle)
@@ -1020,6 +1023,7 @@ public final class AmqpServerFactory implements StreamFactory
                 OctetsFW transferWithFrameHeader = payloadRW.build();
                 doNetworkData(traceId, authorization, 0L, transferWithFrameHeader);
                 payloadIndex += payloadSize;
+                remoteIncomingWindow--;
             }
         }
 
@@ -1473,13 +1477,15 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             final int slotCapacity = bufferPool.slotCapacity();
-            final int sharedReplyCredit = Math.min(slotCapacity, replyBudget - encodeSlotOffset - sharedReplyBudget);
+            // TODO: still need to update/modify sharedReplyBudget
             sessions.values().forEach(s -> minimum.value = Math.min(s.remoteIncomingWindow, minimum.value));
+            sharedReplyBudget = Math.min(minimum.value * initialMaxFrameSize, replyBudget);
+            final int sharedReplyCredit = sharedReplyBudget == 0 ? Math.min(slotCapacity,
+                replyBudget - encodeSlotOffset - sharedReplyBudget) : sharedReplyBudget;
 
             if (sharedReplyCredit > 0)
             {
                 final long replySharedBudgetPrevious = creditor.credit(traceId, replyBudgetIndex, sharedReplyCredit);
-                sharedReplyBudget = Math.min(minimum.value * initialMaxFrameSize, replyBudget);
 
                 assert replySharedBudgetPrevious <= slotCapacity
                     : String.format("%d <= %d, replyBudget = %d",
@@ -1615,7 +1621,7 @@ public final class AmqpServerFactory implements StreamFactory
             state = AmqpState.openInitial(state);
 
             initialBudget += credit;
-            doWindow(network, routeId, initialId, traceId, authorization, budgetId, credit, padding);
+            doWindow(network, routeId, initialId, traceId, authorization, budgetId, credit, padding, 0);
         }
 
         private void doNetworkSignal(
@@ -2299,7 +2305,8 @@ public final class AmqpServerFactory implements StreamFactory
                     outgoingWindow--;
                     deliveryCount++;
                     linkCredit--;
-                    doEncodeTransfer(traceId, authorization, channelId, handle, flags, extension, data.payload());
+                    doEncodeTransfer(traceId, authorization, channelId, remoteIncomingWindow, handle, flags, extension,
+                        data.payload());
                 }
 
                 private void onApplicationEnd(
@@ -2339,7 +2346,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (isReplyOpen())
                     {
                         doWindow(application, newRouteId, replyId, traceId, authorization,
-                            replySharedBudgetId, replyBudget, 0);
+                            replySharedBudgetId, replyBudget, PADDING, initialMaxFrameSize);
                     }
                 }
 

@@ -250,4 +250,25 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.1session.1link.with.more.fin.not.set/client",
+        "${server}/send.to.client.fragmented/server" })
+    public void shouldTransferToClientWithSingleSessionAndSingleLinkWithMoreFinNotSet() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.fragmented.with.links.interleaved/client",
+        "${server}/send.to.client.fragmented.with.links.interleaved/server" })
+    public void shouldSendToClientFragmentedWithLinksInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
 }
