@@ -161,8 +161,8 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.at.most.once/client",
-        "${server}/send.to.client.at.most.once/server" })
+        "${client}/link/transfer.to.client/client",
+        "${server}/send.to.client/server" })
     public void shouldSendToClientAtMostOnce() throws Exception
     {
         k3po.finish();
@@ -183,8 +183,8 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.at.most.once/client",
-        "${server}/send.to.server.at.most.once/server" })
+        "${client}/link/transfer.to.server/client",
+        "${server}/send.to.server/server" })
     public void shouldSendToServerAtMostOnce() throws Exception
     {
         k3po.finish();
@@ -214,9 +214,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.1session.1link.with.more.with.init.fin.set/client",
-        "${server}/send.to.client.1session.1link.fragmented.init.fin.set/server" })
-    public void shouldSendToClientFragmented() throws Exception
+        "${client}/link/transfer.to.client.when.max.frame.size.exceeded/client",
+        "${server}/send.to.client.when.max.frame.size.exceeded/server" })
+    public void shouldSendToClientWhenMaxFrameSizeExceeded() throws Exception
     {
         k3po.finish();
     }
@@ -254,9 +254,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.1session.1link.with.more.with.only.init.set/client",
-        "${server}/send.to.client.1session.1link.fragmented.only.init.set/server" })
-    public void shouldTransferToClientWithSingleSessionAndSingleLinkWithMoreFinNotSet() throws Exception
+        "${client}/link/transfer.to.client.when.fragmented/client",
+        "${server}/send.to.client.when.fragmented/server" })
+    public void shouldTransferToClientWhenFragmented() throws Exception
     {
         k3po.finish();
     }
@@ -265,9 +265,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.fragmented.with.links.interleaved/client",
-        "${server}/send.to.client.fragmented.with.links.interleaved/server" })
-    public void shouldSendToClientFragmentedWithLinksInterleaved() throws Exception
+        "${client}/link/transfer.to.client.when.sessions.interleaved.and.fragmented/client",
+        "${server}/send.to.client.when.sessions.interleaved.and.fragmented/server" })
+    public void shouldSendToClientWhenSessionsInterleavedAndFragmented() throws Exception
     {
         k3po.finish();
     }
@@ -275,9 +275,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.1session.2link.interleaved/client",
-        "${server}/send.to.client.1session.2link.interleaved/server" })
-    public void shouldSendToClientWithOneSessionAndTwoLinksInterleaved() throws Exception
+        "${client}/link/transfer.to.client.when.links.interleaved/client",
+        "${server}/send.to.client.when.links.interleaved/server" })
+    public void shouldSendToClientWhenLinksInterleaved() throws Exception
     {
         k3po.finish();
     }
