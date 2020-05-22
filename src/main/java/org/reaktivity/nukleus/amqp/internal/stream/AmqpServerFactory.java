@@ -928,13 +928,13 @@ public final class AmqpServerFactory implements StreamFactory
             OctetsFW payload)
         {
             final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+            int deferred = dataEx.deferred();
             int extraBufferOffset = 0;
             final BoundedOctetsFW deliveryTag = amqpBinaryRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
                 .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
                 .build()
                 .get();
             int flag = dataEx.flags();
-            int deferred = dataEx.deferred();
             int bitmask = 1;
             int settled = 0;
             if ((flag & bitmask) == bitmask)

@@ -271,4 +271,14 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.1session.2link.interleaved/client",
+        "${server}/send.to.client.1session.2link.interleaved/server" })
+    public void shouldSendToClientWithOneSessionAndTwoLinksInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
 }
