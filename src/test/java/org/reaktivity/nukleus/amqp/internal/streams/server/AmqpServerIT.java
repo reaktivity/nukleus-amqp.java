@@ -214,8 +214,8 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.with.more.to.client/client",
-        "${server}/send.to.client.fragmented/server" })
+        "${client}/link/transfer.to.client.1session.1link.with.more.with.init.fin.set/client",
+        "${server}/send.to.client.1session.1link.fragmented.init.fin.set/server" })
     public void shouldSendToClientFragmented() throws Exception
     {
         k3po.finish();
@@ -254,8 +254,8 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.1session.1link.with.more.fin.not.set/client",
-        "${server}/send.to.client.fragmented/server" })
+        "${client}/link/transfer.to.client.1session.1link.with.more.with.only.init.set/client",
+        "${server}/send.to.client.1session.1link.fragmented.only.init.set/server" })
     public void shouldTransferToClientWithSingleSessionAndSingleLinkWithMoreFinNotSet() throws Exception
     {
         k3po.finish();

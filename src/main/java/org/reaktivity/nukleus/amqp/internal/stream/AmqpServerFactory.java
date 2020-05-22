@@ -934,6 +934,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .build()
                 .get();
             int flag = dataEx.flags();
+            int deferred = dataEx.deferred();
             int bitmask = 1;
             int settled = 0;
             if ((flag & bitmask) == bitmask)
@@ -956,7 +957,7 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpValueHeaderFW valueHeader = amqpValueHeaderRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
                 .sectionType(b -> b.set(AmqpDescribedType.VALUE))
                 .valueType(b -> b.set(AmqpType.BINARY4))
-                .valueLength(originalPayloadSize)
+                .valueLength(deferred == 0 ? originalPayloadSize : originalPayloadSize + deferred)
                 .build();
             final int valueHeaderSize = valueHeader.sizeof();
             final int annotationsSize = annotations == null ? 0 : DESCRIBED_TYPE_SIZE + annotations.sizeof();
@@ -990,8 +991,20 @@ public final class AmqpServerFactory implements StreamFactory
                             .settled(settled)
                             .more(1)
                             .build();
-                        payloadSize = initialMaxFrameSize - FRAME_HEADER_SIZE - transferFrameSize - annotationsSize -
-                            propertiesSize - applicationPropertiesSize - valueHeaderSize;
+                        if (flags == 2)
+                        {
+                            int padding = FRAME_HEADER_SIZE + transferFrameSize + annotationsSize + propertiesSize +
+                                applicationPropertiesSize + valueHeaderSize;
+                            if (padding + payloadSize > initialMaxFrameSize)
+                            {
+                                // TODO: buffer?
+                            }
+                        }
+                        else
+                        {
+                            payloadSize = initialMaxFrameSize - FRAME_HEADER_SIZE - transferFrameSize - annotationsSize -
+                                propertiesSize - applicationPropertiesSize - valueHeaderSize;
+                        }
                     }
                     AmqpFrameHeaderFW transferFrame = setTransferFrame(transfer, FRAME_HEADER_SIZE + transfer.sizeof() +
                         annotationsSize + propertiesSize + applicationPropertiesSize + valueHeaderSize + payloadSize, channel);
