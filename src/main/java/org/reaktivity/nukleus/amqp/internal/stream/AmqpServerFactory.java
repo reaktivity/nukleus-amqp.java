@@ -928,13 +928,14 @@ public final class AmqpServerFactory implements StreamFactory
             OctetsFW payload)
         {
             final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
-            int deferred = dataEx.deferred();
+            int deferred = dataEx != null ? dataEx.deferred() : 0;
             int extraBufferOffset = 0;
-            final BoundedOctetsFW deliveryTag = amqpBinaryRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
-                .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
-                .build()
-                .get();
-            int flag = dataEx.flags();
+            final BoundedOctetsFW deliveryTag = dataEx != null ?
+                amqpBinaryRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
+                    .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
+                    .build()
+                    .get() : null;
+            int flag = dataEx != null ? dataEx.flags() : 0;
             int bitmask = 1;
             int settled = 0;
             if ((flag & bitmask) == bitmask)
@@ -943,13 +944,14 @@ public final class AmqpServerFactory implements StreamFactory
                 bitmask = bitmask << 2;
             }
             // TODO: add cases for resume, aborted, batchable
-            extraBufferOffset = deliveryTag.limit();
-            final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = annotations(dataEx.annotations(), extraBufferOffset);
+            extraBufferOffset = deliveryTag != null ? deliveryTag.limit() : extraBufferOffset;
+            final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = dataEx != null ?
+                annotations(dataEx.annotations(), extraBufferOffset) : null;
             extraBufferOffset = annotations == null ? extraBufferOffset : annotations.limit();
-            final AmqpMessagePropertiesFW properties = properties(dataEx, extraBufferOffset);
+            final AmqpMessagePropertiesFW properties = dataEx != null ? properties(dataEx, extraBufferOffset) : null;
             extraBufferOffset = properties == null ? extraBufferOffset : properties.limit();
-            final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties =
-                applicationProperties(dataEx.applicationProperties(), extraBufferOffset);
+            final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties = dataEx != null ?
+                applicationProperties(dataEx.applicationProperties(), extraBufferOffset) : null;
             extraBufferOffset = applicationProperties == null ? extraBufferOffset : applicationProperties.limit();
             int payloadIndex = 0;
             int payloadSize = payload.sizeof();
@@ -959,7 +961,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .valueType(b -> b.set(AmqpType.BINARY4))
                 .valueLength(deferred == 0 ? originalPayloadSize : originalPayloadSize + deferred)
                 .build();
-            final int valueHeaderSize = valueHeader.sizeof();
+            final int valueHeaderSize = flags > 1 ? valueHeader.sizeof() : 0;
             final int annotationsSize = annotations == null ? 0 : DESCRIBED_TYPE_SIZE + annotations.sizeof();
             final int propertiesSize = properties == null ? 0 : DESCRIBED_TYPE_SIZE + properties.sizeof();
             final int applicationPropertiesSize = applicationProperties == null ? 0 :
@@ -968,13 +970,14 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 AmqpTransferFW.Builder transferBuilder = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE,
                     frameBuffer.capacity());
-                AmqpTransferFW transfer = payloadIndex > 0 ? transferBuilder.handle(handle).build() :
-                    transferBuilder.handle(handle)
-                        .deliveryId(dataEx.deliveryId())
-                        .deliveryTag(deliveryTag)
-                        .messageFormat(dataEx.messageFormat())
-                        .settled(settled)
-                        .build();
+                AmqpTransferFW transfer = payloadIndex > 0 || flags == 1 ? transferBuilder.handle(handle).build() :
+                    flags == 0 ? transferBuilder.handle(handle).more(1).build() :
+                        transferBuilder.handle(handle)
+                            .deliveryId(dataEx.deliveryId())
+                            .deliveryTag(deliveryTag)
+                            .messageFormat(dataEx.messageFormat())
+                            .settled(settled)
+                            .build();
                 final int transferFrameSize = transfer.sizeof() + Byte.BYTES;
 
                 payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity());
@@ -1010,7 +1013,10 @@ public final class AmqpServerFactory implements StreamFactory
                         annotationsSize + propertiesSize + applicationPropertiesSize + valueHeaderSize + payloadSize, channel);
                     int sectionOffset = transferFrame.limit();
                     amqpSection(annotations, properties, applicationProperties, sectionOffset);
-                    payloadRW.put(valueHeader.buffer(), valueHeader.offset(), valueHeader.sizeof());
+                    if (flags > 1)
+                    {
+                        payloadRW.put(valueHeader.buffer(), valueHeader.offset(), valueHeader.sizeof());
+                    }
                 }
                 else
                 {
