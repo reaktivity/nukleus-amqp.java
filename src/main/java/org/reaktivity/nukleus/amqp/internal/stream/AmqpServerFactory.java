@@ -173,13 +173,15 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpTargetListFW.Builder amqpTargetListRW = new AmqpTargetListFW.Builder();
     private final AmqpBinaryFW.Builder amqpBinaryRW = new AmqpBinaryFW.Builder();
     private final AmqpByteFW.Builder amqpByteRW = new AmqpByteFW.Builder();
-    private final AmqpMapFW.Builder<AmqpValueFW, AmqpValueFW, AmqpValueFW.Builder, AmqpValueFW.Builder> amqpMapRW =
+    private final AmqpMapFW.Builder<AmqpValueFW, AmqpValueFW, AmqpValueFW.Builder, AmqpValueFW.Builder> annotationRW =
+        new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(), new AmqpValueFW.Builder());
+    private final AmqpMapFW.Builder<AmqpValueFW, AmqpValueFW, AmqpValueFW.Builder, AmqpValueFW.Builder> applicationPropertyRW =
         new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(), new AmqpValueFW.Builder());
     private final AmqpULongFW.Builder amqpULongRW = new AmqpULongFW.Builder();
     private final AmqpDescribedTypeFW.Builder amqpDescribedTypeRW = new AmqpDescribedTypeFW.Builder();
     private final AmqpMessagePropertiesFW.Builder amqpPropertiesRW = new AmqpMessagePropertiesFW.Builder();
 
-    private final MutableInteger minimum = new MutableInteger();
+    private final MutableInteger minimum = new MutableInteger(Integer.MAX_VALUE);
     private final MutableInteger valueOffset = new MutableInteger();
 
     private final RouteManager router;
@@ -930,11 +932,6 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
             int deferred = dataEx != null ? dataEx.deferred() : 0;
             int extraBufferOffset = 0;
-            final BoundedOctetsFW deliveryTag = dataEx != null ?
-                amqpBinaryRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
-                    .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
-                    .build()
-                    .get() : null;
             int flag = dataEx != null ? dataEx.flags() : 0;
             int bitmask = 1;
             int settled = 0;
@@ -944,7 +941,7 @@ public final class AmqpServerFactory implements StreamFactory
                 bitmask = bitmask << 2;
             }
             // TODO: add cases for resume, aborted, batchable
-            extraBufferOffset = deliveryTag != null ? deliveryTag.limit() : extraBufferOffset;
+
             final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = dataEx != null ?
                 annotations(dataEx.annotations(), extraBufferOffset) : null;
             extraBufferOffset = annotations == null ? extraBufferOffset : annotations.limit();
@@ -961,6 +958,12 @@ public final class AmqpServerFactory implements StreamFactory
                 .valueType(b -> b.set(AmqpType.BINARY4))
                 .valueLength(deferred == 0 ? originalPayloadSize : originalPayloadSize + deferred)
                 .build();
+            extraBufferOffset = valueHeader.limit();
+            final BoundedOctetsFW deliveryTag = dataEx != null ?
+                amqpBinaryRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
+                    .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
+                    .build()
+                    .get() : null;
             final int valueHeaderSize = flags > 1 ? valueHeader.sizeof() : 0;
             final int annotationsSize = annotations == null ? 0 : DESCRIBED_TYPE_SIZE + annotations.sizeof();
             final int propertiesSize = properties == null ? 0 : DESCRIBED_TYPE_SIZE + properties.sizeof();
@@ -1108,9 +1111,9 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpMapFW<AmqpValueFW, AmqpValueFW> messageAnnotations = null;
             if (annotations.fieldCount() > 0)
             {
-                amqpMapRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
+                annotationRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
                 annotations.forEach(this::putAnnotation);
-                messageAnnotations = amqpMapRW.build();
+                messageAnnotations = annotationRW.build();
             }
             return messageAnnotations;
         }
@@ -1192,9 +1195,9 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpMapFW<AmqpValueFW, AmqpValueFW> properties = null;
             if (applicationProperties.fieldCount() > 0)
             {
-                amqpMapRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
+                applicationPropertyRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
                 applicationProperties.forEach(this::putProperty);
-                properties = amqpMapRW.build();
+                properties = applicationPropertyRW.build();
             }
             valueOffset.value = 0;
             return properties;
@@ -1208,20 +1211,20 @@ public final class AmqpServerFactory implements StreamFactory
             case 1:
                 AmqpULongFW id = amqpULongRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
                     .set(item.key().id()).build();
-                valueOffset.value += id.limit();
+                valueOffset.value += id.sizeof();
                 AmqpByteFW value1 = amqpByteRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
                     .set(item.value().bytes().value().getByte(0)).build();
-                valueOffset.value += value1.limit();
-                amqpMapRW.entry(k -> k.setAsAmqpULong(id), v -> v.setAsAmqpByte(value1));
+                valueOffset.value += value1.sizeof();
+                annotationRW.entry(k -> k.setAsAmqpULong(id), v -> v.setAsAmqpByte(value1));
                 break;
             case 2:
                 AmqpSymbolFW name = amqpSymbolRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
                     .set(item.key().name()).build();
-                valueOffset.value += name.limit();
+                valueOffset.value += name.sizeof();
                 AmqpByteFW value2 = amqpByteRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
                     .set(item.value().bytes().value().getByte(0)).build();
-                valueOffset.value += value2.limit();
-                amqpMapRW.entry(k -> k.setAsAmqpSymbol(name), v -> v.setAsAmqpByte(value2));
+                valueOffset.value += value2.sizeof();
+                annotationRW.entry(k -> k.setAsAmqpSymbol(name), v -> v.setAsAmqpByte(value2));
                 break;
             }
         }
@@ -1231,11 +1234,11 @@ public final class AmqpServerFactory implements StreamFactory
         {
             AmqpStringFW key = amqpStringRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
                 .set(item.key()).build();
-            valueOffset.value += key.limit();
+            valueOffset.value += key.sizeof();
             AmqpStringFW value = amqpValueRW.wrap(valueBuffer, valueOffset.value, valueBuffer.capacity())
                 .set(item.value()).build();
-            valueOffset.value += value.limit();
-            amqpMapRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
+            valueOffset.value += value.sizeof();
+            applicationPropertyRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
         }
 
         private void doEncodeClose(
@@ -1499,8 +1502,8 @@ public final class AmqpServerFactory implements StreamFactory
             // TODO: still need to update/modify sharedReplyBudget
             sessions.values().forEach(s -> minimum.value = Math.min(s.remoteIncomingWindow, minimum.value));
             sharedReplyBudget = Math.min(minimum.value * initialMaxFrameSize, replyBudget);
-            final int sharedReplyCredit = sharedReplyBudget == 0 ? Math.min(slotCapacity,
-                replyBudget - encodeSlotOffset - sharedReplyBudget) : sharedReplyBudget;
+            final int sharedReplyCredit = sharedReplyBudget == 0 ?
+                Math.min(slotCapacity, replyBudget - encodeSlotOffset - sharedReplyBudget) : sharedReplyBudget;
 
             if (sharedReplyCredit > 0)
             {

@@ -214,16 +214,6 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.when.max.frame.size.exceeded/client",
-        "${server}/send.to.client.when.max.frame.size.exceeded/server" })
-    public void shouldSendToClientWhenMaxFrameSizeExceeded() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-        "${route}/server/controller",
         "${client}/link/transfer.to.client.with.annotations/client",
         "${server}/send.to.client.with.annotations/server" })
     public void shouldSendToClientWithAnnotations() throws Exception
@@ -254,9 +244,39 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.max.frame.size.exceeded/client",
+        "${server}/send.to.client.when.max.frame.size.exceeded/server" })
+    public void shouldSendToClientWhenMaxFrameSizeExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/transfer.to.client.when.fragmented/client",
         "${server}/send.to.client.when.fragmented/server" })
     public void shouldTransferToClientWhenFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.links.interleaved/client",
+        "${server}/send.to.client.when.links.interleaved/server" })
+    public void shouldSendToClientWhenLinksInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.links.interleaved.and.max.frame.size.exceeded/client",
+        "${server}/send.to.client.when.links.interleaved.and.max.frame.size.exceeded/server" })
+    public void shouldSendToClientWhenLinksInterleavedAndMaxFrameSizeExceeded() throws Exception
     {
         k3po.finish();
     }
@@ -268,17 +288,6 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.when.sessions.interleaved.and.fragmented/client",
         "${server}/send.to.client.when.sessions.interleaved.and.fragmented/server" })
     public void shouldSendToClientWhenSessionsInterleavedAndFragmented() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Ignore
-    @Test
-    @Specification({
-        "${route}/server/controller",
-        "${client}/link/transfer.to.client.when.links.interleaved/client",
-        "${server}/send.to.client.when.links.interleaved/server" })
-    public void shouldSendToClientWhenLinksInterleaved() throws Exception
     {
         k3po.finish();
     }
