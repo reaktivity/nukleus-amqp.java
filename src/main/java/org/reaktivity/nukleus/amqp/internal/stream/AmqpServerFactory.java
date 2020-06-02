@@ -114,7 +114,6 @@ public final class AmqpServerFactory implements StreamFactory
 
     private static final int FRAME_HEADER_SIZE = 11;
     private static final int DESCRIBED_TYPE_SIZE = 3;
-    private static final int PADDING = 300;
     private static final long PROTOCOL_HEADER = 0x414D5150_00010000L;
 
     private final RouteFW routeRO = new RouteFW();
@@ -735,7 +734,7 @@ public final class AmqpServerFactory implements StreamFactory
         private int replyPadding;
 
         private long replyBudgetIndex = NO_CREDITOR_INDEX;
-        private int sharedReplyBudget;
+        private int replySharedBudget;
 
         private int decodeSlot = NO_SLOT;
         private int decodeSlotLimit;
@@ -791,8 +790,7 @@ public final class AmqpServerFactory implements StreamFactory
         private void doEncodeOpen(
             long traceId,
             long authorization,
-            boolean hasMaxFrameSize,
-            int maxFrameSize)
+            boolean hasMaxFrameSize)
         {
             int channel = amqpFrameHeaderRW.build().channel();
             final StringFW containerIdRO = amqpStringRW.wrap(stringBuffer, 0, stringBuffer.capacity())
@@ -807,7 +805,6 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 amqpOpenRW.maxFrameSize(defaultMaxFrameSize);
             }
-            this.initialMaxFrameSize = maxFrameSize;
 
             final AmqpOpenFW open = amqpOpenRW.build();
 
@@ -1499,16 +1496,17 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             final int slotCapacity = bufferPool.slotCapacity();
-            // TODO: still need to update/modify sharedReplyBudget
             sessions.values().forEach(s -> minimum.value = Math.min(s.remoteIncomingWindow, minimum.value));
-            sharedReplyBudget = Math.min(minimum.value * initialMaxFrameSize, replyBudget);
-            final int sharedReplyCredit = sharedReplyBudget == 0 ?
-                Math.min(slotCapacity, replyBudget - encodeSlotOffset - sharedReplyBudget) : sharedReplyBudget;
 
-            if (sharedReplyCredit > 0)
+            final int replySharedBudgetMax = sessions.values().size() > 0 ?
+                Math.min(minimum.value * initialMaxFrameSize, replyBudget) : replyBudget;
+            final int replySharedCredit = replySharedBudgetMax - Math.max(replySharedBudget, 0) - Math.max(encodeSlotOffset, 0);
+
+            if (replySharedCredit > 0)
             {
-                final long replySharedBudgetPrevious = creditor.credit(traceId, replyBudgetIndex, sharedReplyCredit);
+                final long replySharedBudgetPrevious = creditor.credit(traceId, replyBudgetIndex, replySharedCredit);
 
+                replySharedBudget += replySharedCredit;
                 assert replySharedBudgetPrevious <= slotCapacity
                     : String.format("%d <= %d, replyBudget = %d",
                     replySharedBudgetPrevious, slotCapacity, replyBudget);
@@ -1730,7 +1728,11 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpOpenFW open)
         {
-            doEncodeOpen(traceId, authorization, open.hasMaxFrameSize(), (int) open.maxFrameSize());
+            if (open.hasMaxFrameSize())
+            {
+                this.initialMaxFrameSize = (int) open.maxFrameSize();
+            }
+            doEncodeOpen(traceId, authorization, open.hasMaxFrameSize());
         }
 
         private void onDecodeBegin(
@@ -2016,7 +2018,6 @@ public final class AmqpServerFactory implements StreamFactory
                 this.nextIncomingId = flowNextOutgoingId;
                 this.remoteIncomingWindow = flowNextIncomingId + flowIncomingWindow - nextOutgoingId;
                 this.remoteOutgoingWindow = flowOutgoingWindow;
-                sharedReplyBudget = Math.min(remoteIncomingWindow * initialMaxFrameSize, replyBudget);
 
                 if (flow.hasHandle())
                 {
@@ -2314,7 +2315,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final OctetsFW extension = data.extension();
 
                     this.replyBudget -= reserved;
-                    sharedReplyBudget -= reserved;
+                    replySharedBudget -= reserved;
 
                     if (replyBudget < 0)
                     {
@@ -2367,8 +2368,12 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     if (isReplyOpen())
                     {
+                        final int slotCapacity = bufferPool.slotCapacity();
+                        final int maxNumberOfFrames = slotCapacity / initialMaxFrameSize +
+                            ((slotCapacity % initialMaxFrameSize == 0) ? 0 : 1);
+                        final int padding = 20 * maxNumberOfFrames + 205;
                         doWindow(application, newRouteId, replyId, traceId, authorization,
-                            replySharedBudgetId, replyBudget, PADDING, initialMaxFrameSize);
+                            replySharedBudgetId, replyBudget, padding, initialMaxFrameSize);
                     }
                 }
 
