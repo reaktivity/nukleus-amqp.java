@@ -281,6 +281,16 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.links.interleaved.and.fragmented/client",
+        "${server}/send.to.client.when.links.interleaved.and.fragmented/server" })
+    public void shouldSendToClientWhenLinksInterleavedAndFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
