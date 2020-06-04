@@ -1730,7 +1730,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (open.hasMaxFrameSize())
             {
-                this.initialMaxFrameSize = (int) open.maxFrameSize();
+                this.initialMaxFrameSize = Math.min(replySharedBudget, (int) open.maxFrameSize());
             }
             doEncodeOpen(traceId, authorization, open.hasMaxFrameSize());
         }

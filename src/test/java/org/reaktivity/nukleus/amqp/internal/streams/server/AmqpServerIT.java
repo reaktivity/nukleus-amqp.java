@@ -301,6 +301,16 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.client.when.sessions.interleaved.and.max.frame.size.exceeded/client",
+        "${server}/send.to.client.when.sessions.interleaved.and.max.frame.size.exceeded/server" })
+    public void shouldSendToClientWhenSessionsInterleavedAndMaxFrameSizeExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
