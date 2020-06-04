@@ -163,7 +163,7 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/transfer.to.client/client",
         "${server}/send.to.client/server" })
-    public void shouldSendToClientAtMostOnce() throws Exception
+    public void shouldSendToClient() throws Exception
     {
         k3po.finish();
     }
@@ -287,6 +287,16 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.when.links.interleaved.and.fragmented/client",
         "${server}/send.to.client.when.links.interleaved.and.fragmented/server" })
     public void shouldSendToClientWhenLinksInterleavedAndFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.client.when.sessions.interleaved/client",
+        "${server}/send.to.client.when.sessions.interleaved/server" })
+    public void shouldSendToClientWhenSessionsInterleaved() throws Exception
     {
         k3po.finish();
     }

@@ -2326,8 +2326,11 @@ public final class AmqpServerFactory implements StreamFactory
                     remoteIncomingWindow--;
                     nextOutgoingId++;
                     outgoingWindow--;
-                    deliveryCount++;
-                    linkCredit--;
+                    if ((flags & 1) == 1)
+                    {
+                        deliveryCount++;
+                        linkCredit--;
+                    }
                     doEncodeTransfer(traceId, authorization, channelId, remoteIncomingWindow, handle, flags, extension,
                         data.payload());
                 }
