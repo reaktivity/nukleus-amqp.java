@@ -311,11 +311,10 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.when.sessions.interleaved.and.fragmented/client",
+        "${client}/session/transfer.to.client.when.sessions.interleaved.and.fragmented/client",
         "${server}/send.to.client.when.sessions.interleaved.and.fragmented/server" })
     public void shouldSendToClientWhenSessionsInterleavedAndFragmented() throws Exception
     {
