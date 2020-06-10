@@ -943,13 +943,14 @@ public final class AmqpServerFactory implements StreamFactory
             }
             // TODO: add cases for resume, aborted, batchable
 
-            final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = dataEx != null ?
-                annotations(dataEx.annotations(), extraBufferOffset) : null;
+            final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = dataEx != null && dataEx.annotations().fieldCount() > 0 ?
+                amqpAnnotations.annotations(dataEx.annotations(), extraBufferOffset) : null;
             extraBufferOffset = annotations == null ? extraBufferOffset : annotations.limit();
             final AmqpMessagePropertiesFW properties = dataEx != null ? properties(dataEx, extraBufferOffset) : null;
             extraBufferOffset = properties == null ? extraBufferOffset : properties.limit();
-            final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties = dataEx != null ?
-                applicationProperties(dataEx.applicationProperties(), extraBufferOffset) : null;
+            final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties =
+                dataEx != null && dataEx.applicationProperties().fieldCount() > 0 ?
+                    amqpApplicationProperties.properties(dataEx.applicationProperties(), extraBufferOffset) : null;
             extraBufferOffset = applicationProperties == null ? extraBufferOffset : applicationProperties.limit();
             int payloadIndex = 0;
             int payloadSize = payload.sizeof();
@@ -965,7 +966,7 @@ public final class AmqpServerFactory implements StreamFactory
                     .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
                     .build()
                     .get() : null;
-            final int valueHeaderSize = flags > 1 ? valueHeader.sizeof() : 0;
+            final int valueHeaderSize = flags > FLAG_FIN ? valueHeader.sizeof() : 0;
             final int annotationsSize = annotations == null ? 0 : DESCRIBED_TYPE_SIZE + annotations.sizeof();
             final int propertiesSize = properties == null ? 0 : DESCRIBED_TYPE_SIZE + properties.sizeof();
             final int applicationPropertiesSize = applicationProperties == null ? 0 :
@@ -974,7 +975,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 AmqpTransferFW.Builder transferBuilder = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE,
                     frameBuffer.capacity());
-                AmqpTransferFW transfer = payloadIndex > 0 || flags == 1 ? transferBuilder.handle(handle).build() :
+                AmqpTransferFW transfer = payloadIndex > 0 || flags == FLAG_FIN ? transferBuilder.handle(handle).build() :
                     flags == 0 ? transferBuilder.handle(handle).more(1).build() :
                         transferBuilder.handle(handle)
                             .deliveryId(dataEx.deliveryId())
@@ -983,12 +984,11 @@ public final class AmqpServerFactory implements StreamFactory
                             .settled(settled)
                             .build();
                 final int transferFrameSize = transfer.sizeof() + Byte.BYTES;
-
                 payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity());
                 if (payloadIndex == 0)
                 {
                     if (FRAME_HEADER_SIZE + transferFrameSize + annotationsSize + propertiesSize + applicationPropertiesSize +
-                        valueHeaderSize + payloadSize > initialMaxFrameSize || flags == 2)
+                        valueHeaderSize + payloadSize > initialMaxFrameSize || flags == FLAG_INIT)
                     {
                         transfer = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
                             .handle(handle)
@@ -998,7 +998,7 @@ public final class AmqpServerFactory implements StreamFactory
                             .settled(settled)
                             .more(1)
                             .build();
-                        if (flags == 2)
+                        if (flags == FLAG_INIT)
                         {
                             int padding = FRAME_HEADER_SIZE + transferFrameSize + annotationsSize + propertiesSize +
                                 applicationPropertiesSize + valueHeaderSize;
@@ -1017,7 +1017,7 @@ public final class AmqpServerFactory implements StreamFactory
                         annotationsSize + propertiesSize + applicationPropertiesSize + valueHeaderSize + payloadSize, channel);
                     int sectionOffset = transferFrame.limit();
                     amqpSection(annotations, properties, applicationProperties, sectionOffset);
-                    if (flags > 1)
+                    if (flags > FLAG_FIN)
                     {
                         payloadRW.put(valueHeader.buffer(), valueHeader.offset(), valueHeader.sizeof());
                     }
@@ -1105,20 +1105,6 @@ public final class AmqpServerFactory implements StreamFactory
             return frameHeader;
         }
 
-        private AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations(
-            ArrayFW<AmqpAnnotationFW> annotations,
-            int bufferOffset)
-        {
-            AmqpMapFW<AmqpValueFW, AmqpValueFW> messageAnnotations = null;
-            if (annotations.fieldCount() > 0)
-            {
-                amqpAnnotations.wrap(bufferOffset);
-                annotations.forEach(amqpAnnotations::annotation);
-                messageAnnotations = amqpAnnotations.annotations();
-            }
-            return messageAnnotations;
-        }
-
         private AmqpMessagePropertiesFW properties(
             AmqpDataExFW dataEx,
             int bufferOffset)
@@ -1186,20 +1172,6 @@ public final class AmqpServerFactory implements StreamFactory
                     amqpProperties.replyToGroupId(propertiesEx.replyToGroupId());
                 }
                 properties = amqpProperties.build();
-            }
-            return properties;
-        }
-
-        private AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties(
-            ArrayFW<AmqpApplicationPropertyFW> applicationProperties,
-            int bufferOffset)
-        {
-            AmqpMapFW<AmqpValueFW, AmqpValueFW> properties = null;
-            if (applicationProperties.fieldCount() > 0)
-            {
-                amqpApplicationProperties.wrap(bufferOffset);
-                applicationProperties.forEach(amqpApplicationProperties::property);
-                properties = amqpApplicationProperties.properties();
             }
             return properties;
         }
@@ -1856,11 +1828,13 @@ public final class AmqpServerFactory implements StreamFactory
                 new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
                     new AmqpValueFW.Builder());
 
-
-            private void wrap(
+            private AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations(
+                ArrayFW<AmqpAnnotationFW> annotations,
                 int bufferOffset)
             {
                 annotationRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
+                annotations.forEach(this::annotation);
+                return annotationRW.build();
             }
 
             private void annotation(
@@ -1888,11 +1862,6 @@ public final class AmqpServerFactory implements StreamFactory
                     break;
                 }
             }
-
-            private AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations()
-            {
-                return annotationRW.build();
-            }
         }
 
         private final class AmqpApplicationProperties
@@ -1901,10 +1870,14 @@ public final class AmqpServerFactory implements StreamFactory
                 applicationPropertyRW = new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
                 new AmqpValueFW.Builder());
 
-            private void wrap(
+            private AmqpMapFW<AmqpValueFW, AmqpValueFW> properties(
+                ArrayFW<AmqpApplicationPropertyFW> applicationProperties,
                 int bufferOffset)
             {
                 applicationPropertyRW.wrap(extraBuffer, bufferOffset, extraBuffer.capacity());
+                applicationProperties.forEach(this::property);
+                valueOffset.value = 0;
+                return applicationPropertyRW.build();
             }
 
             private void property(
@@ -1917,12 +1890,6 @@ public final class AmqpServerFactory implements StreamFactory
                     .set(item.value()).build();
                 valueOffset.value += value.sizeof();
                 applicationPropertyRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
-            }
-
-            private AmqpMapFW<AmqpValueFW, AmqpValueFW> properties()
-            {
-                valueOffset.value = 0;
-                return applicationPropertyRW.build();
             }
         }
 
