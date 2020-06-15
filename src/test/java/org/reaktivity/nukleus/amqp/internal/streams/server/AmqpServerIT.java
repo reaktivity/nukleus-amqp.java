@@ -114,7 +114,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
@@ -179,13 +178,12 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
         "${client}/link/transfer.to.server/client",
         "${server}/send.to.server/server" })
-    public void shouldSendToServerAtMostOnce() throws Exception
+    public void shouldSendToServer() throws Exception
     {
         k3po.finish();
     }
@@ -256,7 +254,7 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/transfer.to.client.when.fragmented/client",
         "${server}/send.to.client.when.fragmented/server" })
-    public void shouldTransferToClientWhenFragmented() throws Exception
+    public void shouldSendToClientWhenFragmented() throws Exception
     {
         k3po.finish();
     }
