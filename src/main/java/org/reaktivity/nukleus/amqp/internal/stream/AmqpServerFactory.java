@@ -56,6 +56,7 @@ import org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpApplicationPropertyFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpPropertiesFW;
+import org.reaktivity.nukleus.amqp.internal.types.Array32FW;
 import org.reaktivity.nukleus.amqp.internal.types.ArrayFW;
 import org.reaktivity.nukleus.amqp.internal.types.BoundedOctetsFW;
 import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
@@ -167,6 +168,8 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpEndFW amqpEndRO = new AmqpEndFW();
     private final AmqpRouteExFW routeExRO = new AmqpRouteExFW();
     private final AmqpValueHeaderFW amqpValueHeaderRO = new AmqpValueHeaderFW();
+    private final AmqpDescribedTypeFW amqpDescribedTypeRO = new AmqpDescribedTypeFW();
+    private final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotationRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final OctetsFW deliveryTagRO = new OctetsFW();
 
     private final AmqpProtocolHeaderFW.Builder amqpProtocolHeaderRW = new AmqpProtocolHeaderFW.Builder();
@@ -190,6 +193,8 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpULongFW.Builder amqpULongRW = new AmqpULongFW.Builder();
     private final AmqpDescribedTypeFW.Builder amqpDescribedTypeRW = new AmqpDescribedTypeFW.Builder();
     private final AmqpMessagePropertiesFW.Builder amqpPropertiesRW = new AmqpMessagePropertiesFW.Builder();
+    private final Array32FW.Builder<AmqpAnnotationFW.Builder, AmqpAnnotationFW> annotationRW =
+        new Array32FW.Builder<>(new AmqpAnnotationFW.Builder(), new AmqpAnnotationFW());
 
     private final MutableInteger minimum = new MutableInteger(Integer.MAX_VALUE);
     private final MutableInteger valueOffset = new MutableInteger();
@@ -698,13 +703,49 @@ public final class AmqpServerFactory implements StreamFactory
 
         if (transfer != null)
         {
-            final int payloadOffset = transfer.limit();
+            int payloadOffset = transfer.limit();
             final DirectBuffer transferBuffer = transfer.buffer();
+            Array32FW<AmqpAnnotationFW> annotations = null;
+            int annotationSize = 0;
+
+            // TODO: Make separate class/method for the following payload header decoding
+            AmqpDescribedTypeFW describedType = amqpDescribedTypeRO.tryWrap(buffer, payloadOffset, limit);
+            if (describedType != null)
+            {
+                switch (describedType.get())
+                {
+                case MESSAGE_ANNOTATIONS:
+                    AmqpMapFW<AmqpValueFW, AmqpValueFW> annotation = annotationRO.tryWrap(buffer, describedType.limit(), limit);
+                    if (annotation != null)
+                    {
+                        payloadOffset = annotation.limit();
+                        annotationRW.wrap(frameBuffer, 0, frameBuffer.capacity());
+                        annotation.forEach(kv -> vv ->
+                        {
+                            switch (kv.kind())
+                            {
+                            case SYMBOL1:
+                                String key = kv.getAsAmqpSymbol().get().asString();
+                                AmqpByteFW value = vv.getAsAmqpByte();
+                                annotationRW.item(b -> b.key(k -> k.name(key))
+                                    .value(vb -> vb.bytes(value.buffer(), value.offset() + 1, 1)));
+                                // TODO - for value, figure out how to convert from AmqpByte (int) to AmqpBinary
+                                break;
+                            }
+                        });
+                        annotations = annotationRW.build();
+                        annotationSize = describedType.sizeof() + annotation.sizeof();
+                    }
+                    // TODO - implement key and value types to other AmqpValue types
+                    break;
+                }
+            }
+
             AmqpValueHeaderFW payloadHeader = amqpValueHeaderRO.wrap(transferBuffer, payloadOffset, limit);
             OctetsFW payload = payloadRO.tryWrap(transferBuffer, payloadHeader.limit(), limit);
-            server.onDecodeTransfer(traceId, authorization, transfer, payload);
+            server.onDecodeTransfer(traceId, authorization, transfer, annotations, payload);
             server.decoder = decodeFrameType;
-            progress = transfer.limit() + payloadHeader.sizeof() + payload.sizeof();
+            progress = transfer.limit() + annotationSize + payloadHeader.sizeof() + payload.sizeof();
         }
         return progress;
     }
@@ -1823,12 +1864,13 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization,
             AmqpTransferFW transfer,
+            Array32FW<AmqpAnnotationFW> annotations,
             OctetsFW payload)
         {
             AmqpSession session = sessions.get(amqpFrameHeaderRO.channel());
             if (session != null)
             {
-                session.onDecodeTransfer(traceId, authorization, transfer, payload);
+                session.onDecodeTransfer(traceId, authorization, transfer, annotations, payload);
             }
             else
             {
@@ -2152,6 +2194,7 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization,
                 AmqpTransferFW transfer,
+                Array32FW<AmqpAnnotationFW> annotations,
                 OctetsFW payload)
             {
                 this.nextIncomingId++;
@@ -2171,7 +2214,7 @@ public final class AmqpServerFactory implements StreamFactory
                 AmqpServerStream attachedLink = links.get(transfer.handle());
 
                 attachedLink.onDecodeTransfer(traceId, authorization, deliveryId, transfer.deliveryTag(), messageFormat, flags,
-                    payload.sizeof(), payload);
+                    annotations, payload.sizeof(), payload);
             }
 
             private void cleanup(
@@ -2257,22 +2300,27 @@ public final class AmqpServerFactory implements StreamFactory
                     BoundedOctetsFW deliveryTag,
                     long messageFormat,
                     int flags,
+                    Array32FW<AmqpAnnotationFW> annotations,
                     int reserved,
                     OctetsFW payload)
                 {
-                    if (debitorIndex != NO_DEBITOR_INDEX) // TODO
+                    if (debitorIndex != NO_DEBITOR_INDEX)
                     {
                         final int minimum = reserved;
                         reserved = debitor.claim(traceId, debitorIndex, initialId, minimum, reserved, 0);
                     }
 
-                    final AmqpDataExFW dataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                    final AmqpDataExFW.Builder amqpDataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
                         .typeId(amqpTypeId)
                         .deliveryId(deliveryId)
                         .deliveryTag(b -> b.bytes(deliveryTag.get(deliveryTagRO::tryWrap)))
                         .messageFormat(messageFormat)
-                        .flags(flags)
-                        .build();
+                        .flags(flags);
+                    if (annotations != null)
+                    {
+                        amqpDataEx.annotations(annotations);
+                    }
+                    final AmqpDataExFW dataEx = amqpDataEx.build();
                     doApplicationData(traceId, authorization, reserved, payload, dataEx);
                 }
 
