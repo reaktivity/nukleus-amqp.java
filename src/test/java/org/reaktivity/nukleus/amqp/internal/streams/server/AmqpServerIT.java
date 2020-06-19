@@ -31,6 +31,7 @@ import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
 import org.reaktivity.reaktor.ReaktorConfiguration;
 import org.reaktivity.reaktor.test.ReaktorRule;
+import org.reaktivity.reaktor.test.annotation.Configure;
 
 public class AmqpServerIT
 {
@@ -214,6 +215,18 @@ public class AmqpServerIT
         "${client}/link/transfer.to.server.with.properties/client",
         "${server}/send.to.server.with.properties/server" })
     public void shouldSendToServerWithProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.fragmented/client",
+        "${server}/send.to.server.when.fragmented/server" })
+    @Configure(name = "max.frame.size", value = "500")
+    public void shouldSendToServerWhenFragmented() throws Exception
     {
         k3po.finish();
     }
