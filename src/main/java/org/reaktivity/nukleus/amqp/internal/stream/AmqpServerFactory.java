@@ -722,6 +722,10 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpDescribedTypeFW describedType = amqpDescribedTypeRO.tryWrap(buffer, payloadOffset, limit);
             while (describedType != null)
             {
+                if (describedType.get() == VALUE)
+                {
+                    break;
+                }
                 switch (describedType.get())
                 {
                 case MESSAGE_ANNOTATIONS:
@@ -752,21 +756,28 @@ public final class AmqpServerFactory implements StreamFactory
                         applicationPropertySize = describedType.sizeof() + applicationProperties.sizeof();
                     }
                     break;
-                default:
-                    describedType = null;
                 }
-                if (describedType != null)
-                {
-                    describedType = amqpDescribedTypeRO.tryWrap(buffer, payloadOffset, limit);
-                }
+                describedType = amqpDescribedTypeRO.tryWrap(buffer, payloadOffset, limit);
             }
 
-            AmqpValueHeaderFW payloadHeader = amqpValueHeaderRO.wrap(transferBuffer, payloadOffset, limit);
-            OctetsFW payload = payloadRO.tryWrap(transferBuffer, payloadHeader.limit(), limit);
-            server.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties, payload);
+            if (describedType == null)
+            {
+                OctetsFW payload = payloadRO.tryWrap(transferBuffer, payloadOffset, limit);
+                server.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties, payload,
+                    0);
+                progress = transfer.limit() + payload.sizeof();
+            }
+            else
+            {
+                AmqpValueHeaderFW payloadHeader = amqpValueHeaderRO.wrap(transferBuffer, payloadOffset, limit);
+                final long totalPayloadSize = payloadHeader.valueLength();
+                OctetsFW payload = payloadRO.tryWrap(transferBuffer, payloadHeader.limit(), limit);
+                server.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties, payload,
+                    totalPayloadSize);
+                progress = transfer.limit() + annotationSize + propertySize + applicationPropertySize + payloadHeader.sizeof() +
+                    payload.sizeof();
+            }
             server.decoder = decodeFrameType;
-            progress = transfer.limit() + annotationSize + propertySize + applicationPropertySize + payloadHeader.sizeof() +
-                payload.sizeof();
         }
         return progress;
     }
@@ -1829,7 +1840,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             state = AmqpState.openInitial(state);
 
-            initialBudget += credit; // TODO: check if this is right
+            initialBudget += credit;
             doWindow(network, routeId, initialId, traceId, authorization, budgetId, credit, padding, 0);
         }
 
@@ -1989,13 +2000,14 @@ public final class AmqpServerFactory implements StreamFactory
             Array32FW<AmqpAnnotationFW> annotations,
             AmqpPropertiesFW properties,
             Array32FW<AmqpApplicationPropertyFW> applicationProperties,
-            OctetsFW payload)
+            OctetsFW payload,
+            long totalPayloadSize)
         {
             AmqpSession session = sessions.get(amqpFrameHeaderRO.channel());
             if (session != null)
             {
                 session.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties,
-                    payload);
+                    payload, totalPayloadSize);
             }
             else
             {
@@ -2324,14 +2336,16 @@ public final class AmqpServerFactory implements StreamFactory
                 Array32FW<AmqpAnnotationFW> annotations,
                 AmqpPropertiesFW properties,
                 Array32FW<AmqpApplicationPropertyFW> applicationProperties,
-                OctetsFW payload)
+                OctetsFW payload,
+                long totalPayloadSize)
             {
                 this.nextIncomingId++;
                 this.remoteOutgoingWindow--;
                 this.incomingWindow--;
 
-                final long deliveryId = transfer.deliveryId();
-                final long messageFormat = transfer.messageFormat();
+                final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : 0;
+                final BoundedOctetsFW deliveryTag = transfer.hasDeliveryTag() ? transfer.deliveryTag() : null;
+                final long messageFormat = transfer.hasMessageFormat() ? transfer.messageFormat() : 0;
                 final int settled = transfer.hasSettled() ? transfer.settled() : 0;
                 final int resume = transfer.hasResume() ? transfer.resume() : 0;
                 final int aborted = transfer.hasAborted() ? transfer.aborted() : 0;
@@ -2342,8 +2356,8 @@ public final class AmqpServerFactory implements StreamFactory
                 flags = batchable == 1 ? flags | FLAG_BATCHABLE : flags;
                 AmqpServerStream attachedLink = links.get(transfer.handle());
 
-                attachedLink.onDecodeTransfer(traceId, authorization, deliveryId, transfer.deliveryTag(), messageFormat, flags,
-                    annotations, properties, applicationProperties, payload.sizeof(), payload);
+                attachedLink.onDecodeTransfer(traceId, authorization, deliveryId, deliveryTag, messageFormat, flags,
+                    annotations, properties, applicationProperties, payload.sizeof(), payload, totalPayloadSize);
             }
 
             private void cleanup(
@@ -2366,6 +2380,9 @@ public final class AmqpServerFactory implements StreamFactory
 
                 private BudgetDebitor debitor;
                 private long debitorIndex = NO_DEBITOR_INDEX;
+
+                private int initialBudget;
+                private int initialPadding;
 
                 private String name;
                 private long handle;
@@ -2433,7 +2450,8 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpPropertiesFW properties,
                     Array32FW<AmqpApplicationPropertyFW> applicationProperties,
                     int reserved,
-                    OctetsFW payload)
+                    OctetsFW payload,
+                    long totalPayloadSize)
                 {
                     if (debitorIndex != NO_DEBITOR_INDEX)
                     {
@@ -2441,26 +2459,34 @@ public final class AmqpServerFactory implements StreamFactory
                         reserved = debitor.claim(traceId, debitorIndex, initialId, minimum, reserved, 0);
                     }
 
-                    final AmqpDataExFW.Builder amqpDataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
-                        .typeId(amqpTypeId)
-                        .deliveryId(deliveryId)
-                        .deliveryTag(b -> b.bytes(deliveryTag.get(deliveryTagRO::tryWrap)))
-                        .messageFormat(messageFormat)
-                        .flags(flags);
-                    if (annotations != null)
+                    if (totalPayloadSize > 0)
                     {
-                        amqpDataEx.annotations(annotations);
+                        final AmqpDataExFW.Builder amqpDataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                            .typeId(amqpTypeId)
+                            .deferred(reserved < totalPayloadSize ? (int) (totalPayloadSize - reserved) : 0)
+                            .deliveryId(deliveryId)
+                            .deliveryTag(b -> b.bytes(deliveryTag.get(deliveryTagRO::tryWrap)))
+                            .messageFormat(messageFormat)
+                            .flags(flags);
+                        if (annotations != null)
+                        {
+                            amqpDataEx.annotations(annotations);
+                        }
+                        if (properties != null)
+                        {
+                            amqpDataEx.properties(properties);
+                        }
+                        if (applicationProperties != null)
+                        {
+                            amqpDataEx.applicationProperties(applicationProperties);
+                        }
+                        final AmqpDataExFW dataEx = amqpDataEx.build();
+                        doApplicationData(traceId, authorization, reserved, payload, dataEx);
                     }
-                    if (properties != null)
+                    else
                     {
-                        amqpDataEx.properties(properties);
+                        doApplicationData(traceId, authorization, reserved, payload, EMPTY_OCTETS);
                     }
-                    if (applicationProperties != null)
-                    {
-                        amqpDataEx.applicationProperties(applicationProperties);
-                    }
-                    final AmqpDataExFW dataEx = amqpDataEx.build();
-                    doApplicationData(traceId, authorization, reserved, payload, dataEx);
                 }
 
                 private void doApplicationBeginIfNecessary(
@@ -2527,7 +2553,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final int length = limit - offset;
                     assert reserved >= length + initialPadding;
 
-                    initialBudget -= reserved;
+                    this.initialBudget -= reserved;
 
                     assert initialBudget >= 0;
 
@@ -2624,8 +2650,8 @@ public final class AmqpServerFactory implements StreamFactory
 
                     this.state = AmqpState.openInitial(state);
                     this.budgetId = budgetId;
-                    initialBudget += credit;
-                    initialPadding = padding;
+                    this.initialBudget += credit;
+                    this.initialPadding = padding;
 
                     if (budgetId != 0L && debitorIndex == NO_DEBITOR_INDEX)
                     {

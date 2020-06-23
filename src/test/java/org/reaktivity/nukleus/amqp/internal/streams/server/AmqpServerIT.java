@@ -184,6 +184,7 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/transfer.to.server/client",
         "${server}/send.to.server/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServer() throws Exception
     {
         k3po.finish();
@@ -194,6 +195,7 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/transfer.to.server.with.annotations/client",
         "${server}/send.to.server.with.annotations/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerWithAnnotations() throws Exception
     {
         k3po.finish();
@@ -204,6 +206,7 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/transfer.to.server.with.application.properties/client",
         "${server}/send.to.server.with.application.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerWithApplicationProperties() throws Exception
     {
         k3po.finish();
@@ -214,19 +217,30 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/transfer.to.server.with.properties/client",
         "${server}/send.to.server.with.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerWithProperties() throws Exception
     {
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
         "${client}/link/transfer.to.server.when.fragmented/client",
         "${server}/send.to.server.when.fragmented/server" })
-    @Configure(name = "max.frame.size", value = "500")
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "500")
     public void shouldSendToServerWhenFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.links.interleaved/client",
+        "${server}/send.to.server.when.links.interleaved/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenLinksInterleaved() throws Exception
     {
         k3po.finish();
     }
