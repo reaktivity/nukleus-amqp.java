@@ -226,9 +226,20 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.max.frame.size.exceeded/client",
+        "${server}/send.to.server.when.max.frame.size.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenMaxFrameSizeExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/transfer.to.server.when.fragmented/client",
         "${server}/send.to.server.when.fragmented/server" })
-    @Configure(name = "nukleus.amqp.max.frame.size", value = "500")
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
     public void shouldSendToServerWhenFragmented() throws Exception
     {
         k3po.finish();
@@ -239,8 +250,41 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/transfer.to.server.when.links.interleaved/client",
         "${server}/send.to.server.when.links.interleaved/server" })
-    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
     public void shouldSendToServerWhenLinksInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.links.interleaved.and.fragmented/client",
+        "${server}/send.to.server.when.links.interleaved.and.fragmented/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenLinksInterleavedAndFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.server.when.sessions.interleaved/client",
+        "${server}/send.to.server.when.sessions.interleaved/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenSessionsInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.server.when.sessions.interleaved.and.fragmented/client",
+        "${server}/send.to.server.when.sessions.interleaved.and.fragmented/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenSessionsInterleavedAndFragmented() throws Exception
     {
         k3po.finish();
     }
