@@ -26,6 +26,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.VALUE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.CONNECTION_FRAMING_ERROR;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole.RECEIVER;
 import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpCapabilities;
@@ -73,6 +74,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpByteFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpCloseFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedTypeFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDetachFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpEndFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorListFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType;
@@ -185,8 +187,9 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpAttachFW.Builder amqpAttachRW = new AmqpAttachFW.Builder();
     private final AmqpFlowFW.Builder amqpFlowRW = new AmqpFlowFW.Builder();
     private final AmqpTransferFW.Builder amqpTransferRW = new AmqpTransferFW.Builder();
-    private final AmqpCloseFW.Builder amqpCloseRW = new AmqpCloseFW.Builder();
+    private final AmqpDetachFW.Builder amqpDetachRW = new AmqpDetachFW.Builder();
     private final AmqpEndFW.Builder amqpEndRW = new AmqpEndFW.Builder();
+    private final AmqpCloseFW.Builder amqpCloseRW = new AmqpCloseFW.Builder();
     private final AmqpErrorListFW.Builder amqpErrorListRW = new AmqpErrorListFW.Builder();
     private final AmqpValueHeaderFW.Builder amqpValueHeaderRW = new AmqpValueHeaderFW.Builder();
     private final AmqpStringFW.Builder amqpStringRW = new AmqpStringFW.Builder();
@@ -1529,6 +1532,44 @@ public final class AmqpServerFactory implements StreamFactory
             return properties;
         }
 
+        private void doEncodeDetach(
+            long traceId,
+            long authorization,
+            AmqpErrorType errorType,
+            long handle)
+        {
+            final AmqpDetachFW.Builder detachRW = amqpDetachRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
+                .handle(handle)
+                .closed(1);
+
+            AmqpDetachFW detach;
+            if (errorType != null)
+            {
+                AmqpErrorListFW errorList = amqpErrorListRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                    .condition(errorType)
+                    .build();
+                detach = detachRW.error(e -> e.errorList(errorList)).build();
+            }
+            else
+            {
+                detach = detachRW.build();
+            }
+
+            final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
+                .size(FRAME_HEADER_SIZE + detach.sizeof())
+                .doff(2)
+                .type(0)
+                .channel(channelId)
+                .performative(b -> b.detach(detach))
+                .build();
+
+            OctetsFW detachWithFrameHeader = payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity())
+                .put(frameHeader.buffer(), 0, frameHeader.sizeof())
+                .build();
+
+            doNetworkData(traceId, authorization, 0L, detachWithFrameHeader);
+        }
+
         private void doEncodeClose(
             long traceId,
             long authorization,
@@ -2464,10 +2505,17 @@ public final class AmqpServerFactory implements StreamFactory
                 if (!transfer.hasMore())
                 {
                     attachedLink.linkCredit--;
-                    // TODO: case where linkCredit become negative
                 }
-                attachedLink.onDecodeTransfer(traceId, authorization, deliveryId, deliveryTag, messageFormat, flags,
-                    annotations, properties, applicationProperties, payload.sizeof(), payload, totalPayloadSize);
+                if (attachedLink.linkCredit < 0)
+                {
+                    attachedLink.cleanup(traceId, authorization);
+                    attachedLink.onDecodeError(traceId, authorization, LINK_TRANSFER_LIMIT_EXCEEDED);
+                }
+                else
+                {
+                    attachedLink.onDecodeTransfer(traceId, authorization, deliveryId, deliveryTag, messageFormat, flags,
+                        annotations, properties, applicationProperties, payload.sizeof(), payload, totalPayloadSize);
+                }
             }
 
             private void cleanup(
@@ -2591,6 +2639,14 @@ public final class AmqpServerFactory implements StreamFactory
                     {
                         doApplicationData(traceId, authorization, reserved, payload, EMPTY_OCTETS);
                     }
+                }
+
+                private void onDecodeError(
+                    long traceId,
+                    long authorization,
+                    AmqpErrorType errorType)
+                {
+                    doEncodeDetach(traceId, authorization, errorType, handle);
                 }
 
                 private void doApplicationBeginIfNecessary(
