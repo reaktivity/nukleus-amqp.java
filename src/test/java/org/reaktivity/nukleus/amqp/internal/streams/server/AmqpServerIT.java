@@ -289,12 +289,12 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
         "${client}/session/incoming.window.exceeded/client",
         "${server}/incoming.window.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
     public void shouldEndSessionWhenIncomingWindowExceeded() throws Exception
     {
         k3po.finish();
@@ -425,7 +425,7 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/link/link.credit.exceeded/client",
         "${server}/link.credit.exceeded/server" })
-    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
     public void shouldDetachLinkWhenLinkCreditExceeded() throws Exception
     {
         k3po.finish();
