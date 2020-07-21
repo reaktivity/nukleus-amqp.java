@@ -869,7 +869,7 @@ public final class AmqpServerFactory implements StreamFactory
             switch (kv.kind())
             {
             case SYMBOL1:
-                String symbolKey = kv.getAsAmqpSymbol().get().asString();
+                StringFW symbolKey = kv.getAsAmqpSymbol().get();
                 annotationBuilder.item(b -> b.key(k -> k.name(symbolKey))
                     .value(vb -> vb.bytes(value.value(), 0, value.length())));
                 break;
