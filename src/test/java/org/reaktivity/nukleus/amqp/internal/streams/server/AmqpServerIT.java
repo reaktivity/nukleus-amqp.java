@@ -97,6 +97,15 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/session/end.exchange/client" })
+    public void shouldExchangeEnd() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/attach.as.receiver.only/client",
         "${server}/connect.as.receiver.only/server" })
     public void shouldConnectAsReceiverOnly() throws Exception
