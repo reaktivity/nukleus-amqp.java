@@ -31,6 +31,7 @@ import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
 import org.reaktivity.reaktor.ReaktorConfiguration;
 import org.reaktivity.reaktor.test.ReaktorRule;
+import org.reaktivity.reaktor.test.annotation.Configure;
 
 public class AmqpServerIT
 {
@@ -96,6 +97,15 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/session/end.exchange/client" })
+    public void shouldExchangeEnd() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/attach.as.receiver.only/client",
         "${server}/connect.as.receiver.only/server" })
     public void shouldConnectAsReceiverOnly() throws Exception
@@ -114,7 +124,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
@@ -161,9 +170,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.at.most.once/client",
-        "${server}/send.to.client.at.most.once/server" })
-    public void shouldSendToClientAtMostOnce() throws Exception
+        "${client}/link/transfer.to.client/client",
+        "${server}/send.to.client/server" })
+    public void shouldSendToClient() throws Exception
     {
         k3po.finish();
     }
@@ -179,13 +188,112 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.at.most.once/client",
-        "${server}/send.to.server.at.most.once/server" })
-    public void shouldSendToServerAtMostOnce() throws Exception
+        "${client}/link/transfer.to.server/client",
+        "${server}/send.to.server/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServer() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.annotations/client",
+        "${server}/send.to.server.with.annotations/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithAnnotations() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.application.properties/client",
+        "${server}/send.to.server.with.application.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.properties/client",
+        "${server}/send.to.server.with.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.max.frame.size.exceeded/client",
+        "${server}/send.to.server.when.max.frame.size.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenMaxFrameSizeExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.fragmented/client",
+        "${server}/send.to.server.when.fragmented/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.links.interleaved/client",
+        "${server}/send.to.server.when.links.interleaved/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenLinksInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.links.interleaved.and.fragmented/client",
+        "${server}/send.to.server.when.links.interleaved.and.fragmented/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenLinksInterleavedAndFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.server.when.sessions.interleaved/client",
+        "${server}/send.to.server.when.sessions.interleaved/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenSessionsInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.server.when.sessions.interleaved.and.fragmented/client",
+        "${server}/send.to.server.when.sessions.interleaved.and.fragmented/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldSendToServerWhenSessionsInterleavedAndFragmented() throws Exception
     {
         k3po.finish();
     }
@@ -207,16 +315,6 @@ public class AmqpServerIT
         "${client}/session/send.to.client.multiple.sessions/client",
         "${server}/send.to.client.through.multiple.sessions/server" })
     public void shouldSendToClientThroughMultipleSessions() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-        "${route}/server/controller",
-        "${client}/link/transfer.with.more.to.client/client",
-        "${server}/send.to.client.fragmented/server" })
-    public void shouldSendToClientFragmented() throws Exception
     {
         k3po.finish();
     }
@@ -247,6 +345,86 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.with.application.properties/client",
         "${server}/send.to.client.with.application.properties/server" })
     public void shouldSendToClientWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.max.frame.size.exceeded/client",
+        "${server}/send.to.client.when.max.frame.size.exceeded/server" })
+    public void shouldSendToClientWhenMaxFrameSizeExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.fragmented/client",
+        "${server}/send.to.client.when.fragmented/server" })
+    public void shouldSendToClientWhenFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.links.interleaved/client",
+        "${server}/send.to.client.when.links.interleaved/server" })
+    public void shouldSendToClientWhenLinksInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.links.interleaved.and.max.frame.size.exceeded/client",
+        "${server}/send.to.client.when.links.interleaved.and.max.frame.size.exceeded/server" })
+    public void shouldSendToClientWhenLinksInterleavedAndMaxFrameSizeExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.links.interleaved.and.fragmented/client",
+        "${server}/send.to.client.when.links.interleaved.and.fragmented/server" })
+    public void shouldSendToClientWhenLinksInterleavedAndFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.client.when.sessions.interleaved/client",
+        "${server}/send.to.client.when.sessions.interleaved/server" })
+    public void shouldSendToClientWhenSessionsInterleaved() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.client.when.sessions.interleaved.and.max.frame.size.exceeded/client",
+        "${server}/send.to.client.when.sessions.interleaved.and.max.frame.size.exceeded/server" })
+    public void shouldSendToClientWhenSessionsInterleavedAndMaxFrameSizeExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/transfer.to.client.when.sessions.interleaved.and.fragmented/client",
+        "${server}/send.to.client.when.sessions.interleaved.and.fragmented/server" })
+    public void shouldSendToClientWhenSessionsInterleavedAndFragmented() throws Exception
     {
         k3po.finish();
     }
