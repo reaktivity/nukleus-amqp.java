@@ -964,6 +964,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         private long replyBudgetIndex = NO_CREDITOR_INDEX;
         private int replySharedBudget;
+        private int replyBudgetReserved;
 
         private int decodeSlot = NO_SLOT;
         private int decodeSlotOffset;
@@ -1016,6 +1017,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .revision(revision)
                 .build();
 
+            replyBudgetReserved += protocolHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, protocolHeader);
         }
 
@@ -1041,6 +1043,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .performative(b -> b.open(open))
                 .build();
 
+            replyBudgetReserved += frameHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
@@ -1064,6 +1067,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .performative(b -> b.begin(begin))
                 .build();
 
+            replyBudgetReserved += frameHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
@@ -1131,6 +1135,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .performative(b -> b.attach(attach))
                 .build();
 
+            replyBudgetReserved += frameHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
@@ -1163,6 +1168,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .performative(b -> b.flow(flow))
                 .build();
 
+            replyBudgetReserved += frameHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
@@ -1445,6 +1451,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .performative(b -> b.end(end))
                 .build();
 
+            replyBudgetReserved += frameHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
@@ -1476,6 +1483,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .performative(b -> b.close(close))
                 .build();
 
+            replyBudgetReserved += frameHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
@@ -1691,6 +1699,12 @@ public final class AmqpServerFactory implements StreamFactory
             replyBudget += credit;
             replyPadding += padding;
 
+            if (replyBudgetReserved > 0)
+            {
+                final int reservedCredit = Math.min(credit, replyBudgetReserved);
+                replyBudgetReserved -= reservedCredit;
+            }
+
             if (encodeSlot != NO_SLOT)
             {
                 final MutableDirectBuffer buffer = bufferPool.buffer(encodeSlot);
@@ -1715,7 +1729,7 @@ public final class AmqpServerFactory implements StreamFactory
             final int replySharedCredit = replySharedBudgetMax - Math.max(this.replySharedBudget, 0)
                 - Math.max(encodeSlotOffset, 0);
 
-            if (replySharedCredit > 0)
+            if (replySharedCredit > 0 && replyBudgetReserved == 0)
             {
                 final long replySharedBudgetPrevious = creditor.credit(traceId, replyBudgetIndex, replySharedCredit);
 
