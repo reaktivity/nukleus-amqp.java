@@ -145,6 +145,7 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int DESCRIBED_TYPE_SIZE = 3;
     private static final int TRANSFER_HEADER_SIZE = 20;
     private static final int PAYLOAD_HEADER_SIZE = 205;
+    private static final int NO_DELIVERY_ID = -1;
     private static final long PROTOCOL_HEADER = 0x414D5150_00010000L;
 
     private final RouteFW routeRO = new RouteFW();
@@ -180,7 +181,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpRouteExFW routeExRO = new AmqpRouteExFW();
     private final AmqpValueHeaderFW amqpValueHeaderRO = new AmqpValueHeaderFW();
     private final AmqpDescribedTypeFW amqpDescribedTypeRO = new AmqpDescribedTypeFW();
-    private final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotationRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
+    private final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotationsRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final OctetsFW deliveryTagRO = new OctetsFW();
     private final AmqpMessagePropertiesFW amqpPropertiesRO = new AmqpMessagePropertiesFW();
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationPropertyRO =
@@ -556,6 +557,7 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpDescribedType descriptor = performative.kind();
             final AmqpServerDecoder decoder = decodersByPerformative.getOrDefault(descriptor, decodeUnknownType);
             server.incomingChannel = frameHeader.channel();
+            server.decodableBodyBytes = frameHeader.size() - frameHeader.doff() * 4;
             server.decoder = decoder;
             progress = performative.offset();
         }
@@ -670,111 +672,119 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
         final AmqpTransferFW transfer = performative.transfer();
         assert transfer != null;
+        final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : NO_DELIVERY_ID;
+
+        AmqpServer.AmqpSession.AmqpServerStream sender = server.sessions.get(server.incomingChannel).links.get(transfer.handle());
+
+        AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = null;
+        AmqpMessagePropertiesFW properties = null;
+        AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties = null;
 
         int progress = offset;
-        AmqpServer.AmqpSession.AmqpServerStream sender = server.sessions.get(server.incomingChannel).links.get(transfer.handle());
-        int sectionOffset = transfer.limit();
-        Array32FW<AmqpAnnotationFW> annotations = null;
-        AmqpPropertiesFW properties = null;
-        Array32FW<AmqpApplicationPropertyFW> applicationProperties = null;
-        int annotationSize = 0;
-        int propertySize = 0;
-        int applicationPropertySize = 0;
-        if (sender.deliveryId == -1 || (transfer.hasDeliveryId() && sender.deliveryId == transfer.deliveryId() - 1))
+        decode:
         {
-            AmqpDescribedTypeFW sectionType = amqpDescribedTypeRO.tryWrap(buffer, sectionOffset, limit);
-            if (sectionType != null && sectionType.get() == MESSAGE_ANNOTATIONS)
+            long decodableBodyBytes = server.decodableBodyBytes - (transfer.offset() - performative.offset());
+            if (!sender.fragmented)
             {
-                AmqpMapFW<AmqpValueFW, AmqpValueFW> annotation =
-                    annotationRO.tryWrap(buffer, sectionType.limit(), limit);
-                if (annotation != null)
-                {
-                    sectionOffset = annotation.limit();
-                    annotations = decodeAnnotations(annotation);
-                    annotationSize = sectionType.sizeof() + annotation.sizeof();
-                }
-                else
-                {
-                    return decodeError(server, traceId, authorization, limit);
-                }
-                sectionType = amqpDescribedTypeRO.tryWrap(buffer, sectionOffset, limit);
+                assert deliveryId != NO_DELIVERY_ID; // TODO: error
+                assert deliveryId == sender.deliveryId + 1; // TODO: error
+                sender.deliveryId = deliveryId;
             }
-            if (sectionType != null && sectionType.get() == PROPERTIES)
+
+            if (deliveryId != NO_DELIVERY_ID && deliveryId != sender.deliveryId) // TODO: error
             {
-                AmqpMessagePropertiesFW property = amqpPropertiesRO.tryWrap(buffer, sectionType.limit(), limit);
-                if (property != null)
-                {
-                    sectionOffset = property.limit();
-                    properties = decodeProperties(property);
-                    propertySize = sectionType.sizeof() + properties.sizeof();
-                }
-                else
-                {
-                    return decodeError(server, traceId, authorization, limit);
-                }
-                sectionType = amqpDescribedTypeRO.tryWrap(buffer, sectionOffset, limit);
+                break decode;
             }
-            if (sectionType != null && sectionType.get() == APPLICATION_PROPERTIES)
+
+            decodableBodyBytes -= transfer.sizeof();
+            int payloadOffset = transfer.limit();
+            int deferred = -1;
+            long totalPayloadSize = 0;
+            if (!sender.fragmented)
             {
-                AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperty =
-                    applicationPropertyRO.tryWrap(buffer, sectionType.limit(), limit);
-                if (applicationProperty != null)
+                int sectionLimit = payloadOffset;
+                AmqpDescribedTypeFW sectionType = amqpDescribedTypeRO.tryWrap(buffer, sectionLimit, limit);
+                if (sectionType != null && sectionType.get() == MESSAGE_ANNOTATIONS)
                 {
-                    sectionOffset = applicationProperty.limit();
-                    applicationProperties = decodeApplicationProperties(applicationProperty);
-                    applicationPropertySize = sectionType.sizeof() + applicationProperties.sizeof();
+                    annotations = annotationsRO.tryWrap(buffer, sectionType.limit(), limit);
+                    if (annotations == null)
+                    {
+                        decodeError(server, traceId, authorization, limit);
+                        break decode;
+                    }
+
+                    sectionLimit = annotations.limit();
+                    decodableBodyBytes -= sectionType.sizeof() + annotations.sizeof();
+                    assert decodableBodyBytes >= 0;
+
+                    sectionType = amqpDescribedTypeRO.tryWrap(buffer, sectionLimit, limit);
                 }
-                else
+
+                if (sectionType != null && sectionType.get() == PROPERTIES)
                 {
-                    return decodeError(server, traceId, authorization, limit);
+                    properties = amqpPropertiesRO.tryWrap(buffer, sectionType.limit(), limit);
+                    if (properties == null)
+                    {
+                        decodeError(server, traceId, authorization, limit);
+                        break decode;
+                    }
+
+                    sectionLimit = properties.limit();
+                    decodableBodyBytes -= sectionType.sizeof() + properties.sizeof();
+                    assert decodableBodyBytes >= 0;
+
+                    sectionType = amqpDescribedTypeRO.tryWrap(buffer, sectionLimit, limit);
                 }
+
+                if (sectionType != null && sectionType.get() == APPLICATION_PROPERTIES)
+                {
+                    applicationProperties = applicationPropertyRO.tryWrap(buffer, sectionType.limit(), limit);
+                    if (applicationProperties == null)
+                    {
+                        decodeError(server, traceId, authorization, limit);
+                        break decode;
+                    }
+
+                    sectionLimit = applicationProperties.limit();
+                    decodableBodyBytes -= sectionType.sizeof() + applicationProperties.sizeof();
+                    assert decodableBodyBytes >= 0;
+                }
+
+                AmqpValueHeaderFW payloadHeader = amqpValueHeaderRO.wrap(buffer, sectionLimit, limit);
+                payloadOffset = payloadHeader.limit();
+                totalPayloadSize = payloadHeader.valueLength();
+                decodableBodyBytes -= payloadHeader.sizeof();
             }
-        }
-        int reserved;
-        boolean canSend = AmqpState.initialOpened(sender.state);
-        if (sender.deliveryId == -1 || (transfer.hasDeliveryId() && sender.deliveryId == transfer.deliveryId() - 1))
-        {
-            AmqpValueHeaderFW payloadHeader = amqpValueHeaderRO.wrap(buffer, sectionOffset, limit);
-            final long totalPayloadSize = payloadHeader.valueLength();
-            OctetsFW payload = payloadRO.tryWrap(buffer, payloadHeader.limit(), limit);
-            reserved = transfer.sizeof() + annotationSize + propertySize + applicationPropertySize + payloadHeader.sizeof() +
-                payload.sizeof();
-            canSend &= reserved <= sender.initialBudget;
-            if (canSend && sender.debitorIndex != NO_DEBITOR_INDEX)
+
+            final int payloadLimit = (int) (payloadOffset + decodableBodyBytes);
+            assert payloadLimit <= limit;
+            OctetsFW payload = payloadRO.tryWrap(buffer, payloadOffset, payloadLimit);
+            int reserved = payload.sizeof() + sender.initialPadding;
+            boolean canSend = reserved <= sender.initialBudget;
+            if (!sender.fragmented)
             {
-                reserved = sender.debitor.claim(traceId, sender.debitorIndex, sender.initialId, payload.sizeof(),
-                    payload.sizeof(), 0);
+                final int consumed = payload.sizeof();
+                deferred = consumed < totalPayloadSize ? (int) (totalPayloadSize - consumed) : 0;
             }
-            if (canSend && reserved != 0)
-            {
-                server.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties,
-                    payload, totalPayloadSize);
-                progress = transfer.limit() + annotationSize + propertySize + applicationPropertySize +
-                    payloadHeader.sizeof() + payload.sizeof();
-            }
-        }
-        else
-        {
-            assert !transfer.hasDeliveryId() || sender.deliveryId == transfer.deliveryId();
-            OctetsFW payload = payloadRO.tryWrap(buffer, sectionOffset, limit);
-            reserved = payload.sizeof() + sender.initialPadding;
-            canSend &= reserved <= sender.initialBudget;
+
             if (canSend && sender.debitorIndex != NO_DEBITOR_INDEX)
             {
                 reserved = sender.debitor.claim(traceId, sender.debitorIndex, sender.initialId, reserved, reserved, 0);
             }
+
             if (canSend && reserved != 0)
             {
                 server.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties,
-                    payload, 0);
-                progress = transfer.limit() + payload.sizeof();
-                if (!transfer.hasMore() || transfer.more() == 0)
-                {
-                    sender.deliveryId = -1;
-                }
+                    payload, reserved, deferred);
+                decodableBodyBytes -= payload.sizeof();
+                assert decodableBodyBytes == 0;
+                progress = payload.limit();
+                sender.fragmented = transfer.hasMore() && transfer.more() == 1;
             }
+
+            server.decoder = decodeFrameType;
         }
-        server.decoder = decodeFrameType;
+
         return progress;
     }
 
@@ -879,7 +889,7 @@ public final class AmqpServerFactory implements StreamFactory
         return applicationPropertyBuilder.build();
     }
 
-    private int decodeError(
+    private void decodeError(
         AmqpServer server,
         final long traceId,
         final long authorization,
@@ -887,7 +897,6 @@ public final class AmqpServerFactory implements StreamFactory
     {
         server.onDecodeError(traceId, authorization, DECODE_ERROR);
         server.decoder = decodeIgnoreAll;
-        return limit;
     }
 
     private int decodeDetach(
@@ -1003,6 +1012,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         private int incomingChannel;
         private int outgoingChannel;
+        private long decodableBodyBytes;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
 
@@ -2098,17 +2108,18 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization,
             AmqpTransferFW transfer,
-            Array32FW<AmqpAnnotationFW> annotations,
-            AmqpPropertiesFW properties,
-            Array32FW<AmqpApplicationPropertyFW> applicationProperties,
+            AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations,
+            AmqpMessagePropertiesFW properties,
+            AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties,
             OctetsFW payload,
-            long totalPayloadSize)
+            int reserved,
+            int deferred)
         {
             AmqpSession session = sessions.get(incomingChannel);
             if (session != null)
             {
                 session.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties,
-                    payload, totalPayloadSize);
+                    payload, reserved, deferred);
             }
             else
             {
@@ -2473,11 +2484,12 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization,
                 AmqpTransferFW transfer,
-                Array32FW<AmqpAnnotationFW> annotations,
-                AmqpPropertiesFW properties,
-                Array32FW<AmqpApplicationPropertyFW> applicationProperties,
+                AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations,
+                AmqpMessagePropertiesFW properties,
+                AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties,
                 OctetsFW payload,
-                long totalPayloadSize)
+                int reserved,
+                int deferred)
             {
                 this.nextIncomingId++;
                 this.remoteOutgoingWindow--;
@@ -2523,7 +2535,7 @@ public final class AmqpServerFactory implements StreamFactory
                     else
                     {
                         link.onDecodeTransfer(traceId, authorization, deliveryId, deliveryTag, messageFormat, flags,
-                            annotations, properties, applicationProperties, payload.sizeof(), payload, totalPayloadSize);
+                            annotations, properties, applicationProperties, reserved, payload, deferred);
                     }
                 }
             }
@@ -2554,7 +2566,8 @@ public final class AmqpServerFactory implements StreamFactory
                 private long replyId;
                 private long budgetId;
                 private int replyBudget;
-                private long deliveryId = -1;
+                private long deliveryId = NO_DELIVERY_ID;
+                private boolean fragmented;
                 private long deliveryCount;
                 private int linkCredit;
 
@@ -2625,42 +2638,40 @@ public final class AmqpServerFactory implements StreamFactory
                     BoundedOctetsFW deliveryTag,
                     long messageFormat,
                     int flags,
-                    Array32FW<AmqpAnnotationFW> annotations,
-                    AmqpPropertiesFW properties,
-                    Array32FW<AmqpApplicationPropertyFW> applicationProperties,
+                    AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations,
+                    AmqpMessagePropertiesFW properties,
+                    AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties,
                     int reserved,
                     OctetsFW payload,
-                    long totalPayloadSize)
+                    int deferred)
                 {
-                    if (totalPayloadSize > 0)
+                    Flyweight dataEx = EMPTY_OCTETS;
+
+                    if (deferred >= 0)
                     {
                         final AmqpDataExFW.Builder amqpDataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
                             .typeId(amqpTypeId)
-                            .deferred(reserved < totalPayloadSize ? (int) (totalPayloadSize - reserved) : 0)
+                            .deferred(deferred)
                             .deliveryId(deliveryId)
                             .deliveryTag(b -> b.bytes(deliveryTag.get(deliveryTagRO::tryWrap)))
                             .messageFormat(messageFormat)
                             .flags(flags);
                         if (annotations != null)
                         {
-                            amqpDataEx.annotations(annotations);
+                            amqpDataEx.annotations(decodeAnnotations(annotations));
                         }
                         if (properties != null)
                         {
-                            amqpDataEx.properties(properties);
+                            amqpDataEx.properties(decodeProperties(properties));
                         }
                         if (applicationProperties != null)
                         {
-                            amqpDataEx.applicationProperties(applicationProperties);
+                            amqpDataEx.applicationProperties(decodeApplicationProperties(applicationProperties));
                         }
-                        final AmqpDataExFW dataEx = amqpDataEx.build();
-                        doApplicationData(traceId, authorization, reserved, payload, dataEx);
+                        dataEx = amqpDataEx.build();
                     }
-                    else
-                    {
-                        doApplicationData(traceId, authorization, reserved, payload, EMPTY_OCTETS);
-                    }
-                    this.deliveryId = deliveryId;
+
+                    doApplicationData(traceId, authorization, reserved, payload, dataEx);
                 }
 
                 private void onDecodeDetach(
