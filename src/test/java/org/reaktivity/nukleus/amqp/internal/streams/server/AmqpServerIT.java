@@ -145,13 +145,12 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/detach.link/client",
+        "${client}/link/detach.exchange/client",
         "${server}/disconnect.abort/server" })
-    public void shouldDisconnectWithAbort() throws Exception
+    public void shouldExchangeDetach() throws Exception
     {
         k3po.finish();
     }
@@ -298,12 +297,12 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
         "${client}/session/incoming.window.exceeded/client",
         "${server}/incoming.window.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
     public void shouldEndSessionWhenIncomingWindowExceeded() throws Exception
     {
         k3po.finish();
@@ -425,6 +424,28 @@ public class AmqpServerIT
         "${client}/session/transfer.to.client.when.sessions.interleaved.and.fragmented/client",
         "${server}/send.to.client.when.sessions.interleaved.and.fragmented/server" })
     public void shouldSendToClientWhenSessionsInterleavedAndFragmented() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/link.credit.exceeded/client",
+        "${server}/link.credit.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
+    public void shouldDetachLinkWhenLinkCreditExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/max.frame.size.exceeded.with.multiple.sessions.and.links/client",
+        "${server}/max.frame.size.exceeded.with.multiple.sessions.and.links/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
+    public void shouldCloseConnectionWhenMaxFrameSizeExceededWithMultipleSessions() throws Exception
     {
         k3po.finish();
     }
