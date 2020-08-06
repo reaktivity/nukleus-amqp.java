@@ -425,6 +425,7 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Ignore("requires k3po parallel reads")
     @Test
     @Specification({
         "${route}/server/controller",
