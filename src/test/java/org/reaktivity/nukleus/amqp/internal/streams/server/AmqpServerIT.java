@@ -18,7 +18,6 @@ package org.reaktivity.nukleus.amqp.internal.streams.server;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_CONTAINER_ID;
-import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_MAX_FRAME_SIZE;
 import static org.reaktivity.reaktor.test.ReaktorRule.EXTERNAL_AFFINITY_MASK;
 
 import org.junit.Ignore;
@@ -50,7 +49,6 @@ public class AmqpServerIT
         .nukleus("amqp"::equals)
         .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
         .configure(AMQP_CONTAINER_ID, "server")
-        .configure(AMQP_MAX_FRAME_SIZE, 131072L)
         .configure(ReaktorConfiguration.REAKTOR_DRAIN_ON_CLOSE, false)
         .clean();
 
@@ -90,6 +88,15 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/session/begin.exchange/client" })
     public void shouldExchangeBegin() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/begin.then.close/client" })
+    public void shouldExchangeBeginThenClose() throws Exception
     {
         k3po.finish();
     }
@@ -418,6 +425,7 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Ignore("requires k3po parallel reads")
     @Test
     @Specification({
         "${route}/server/controller",
