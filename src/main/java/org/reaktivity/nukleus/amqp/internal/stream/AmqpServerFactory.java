@@ -31,12 +31,14 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.ATTACH;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.BEGIN;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.CLOSE;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DATA;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DETACH;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.END;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.FLOW;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.OPEN;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.PROPERTIES;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.SEQUENCE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.TRANSFER;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.VALUE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.CONNECTION_FRAMING_ERROR;
@@ -75,6 +77,7 @@ import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
 import org.reaktivity.nukleus.amqp.internal.AmqpNukleus;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpApplicationPropertyFW;
+import org.reaktivity.nukleus.amqp.internal.types.AmqpBodyKind;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpPropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.Array32FW;
@@ -104,6 +107,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpProtocolHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettleMode;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSenderSettleMode;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSourceFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSourceListFW;
@@ -183,6 +187,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpPerformativeFW amqpPerformativeRO = new AmqpPerformativeFW();
     private final AmqpRouteExFW routeExRO = new AmqpRouteExFW();
     private final AmqpValueHeaderFW amqpValueHeaderRO = new AmqpValueHeaderFW();
+    private final AmqpSectionFW amqpSectionRO = new AmqpSectionFW();
     private final AmqpDescribedTypeFW amqpDescribedTypeRO = new AmqpDescribedTypeFW();
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotationsRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final OctetsFW deliveryTagRO = new OctetsFW();
@@ -714,6 +719,7 @@ public final class AmqpServerFactory implements StreamFactory
             int payloadOffset = transfer.limit();
             int deferred = -1;
             long totalPayloadSize = 0;
+            AmqpSectionFW amqpSection = null;
             if (!sender.fragmented)
             {
                 int sectionLimit = payloadOffset;
@@ -763,11 +769,10 @@ public final class AmqpServerFactory implements StreamFactory
                     decodableBodyBytes -= sectionType.sizeof() + applicationProperties.sizeof();
                     assert decodableBodyBytes >= 0;
                 }
-
-                AmqpValueHeaderFW payloadHeader = amqpValueHeaderRO.wrap(buffer, sectionLimit, limit);
-                payloadOffset = payloadHeader.limit();
-                totalPayloadSize = payloadHeader.valueLength();
-                decodableBodyBytes -= payloadHeader.sizeof();
+                amqpSection = amqpSectionRO.wrap(buffer, sectionLimit, limit);
+                payloadOffset = payloadOffset(amqpSection);
+                totalPayloadSize = totalPayloadSize(amqpSection);
+                decodableBodyBytes -= sectionHeaderSize(amqpSection);
             }
 
             final int payloadLimit = (int) (payloadOffset + decodableBodyBytes);
@@ -789,7 +794,7 @@ public final class AmqpServerFactory implements StreamFactory
             if (canSend && reserved != 0)
             {
                 server.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties,
-                    payload, reserved, deferred);
+                    payload, reserved, deferred, amqpSection);
                 decodableBodyBytes -= payload.sizeof();
                 assert decodableBodyBytes == 0;
                 progress = payload.limit();
@@ -800,6 +805,94 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         return progress;
+    }
+
+    private int payloadOffset(
+        AmqpSectionFW amqpSection)
+    {
+        int payloadOffset = amqpSection.offset() + 3; // TODO: 3 -> constant?
+
+        if (amqpSection.kind() == VALUE)
+        {
+            AmqpValueFW value = amqpSection.amqpValue();
+            AmqpType type = value.kind();
+            switch (type)
+            {
+            case BINARY1:
+                payloadOffset = value.getAsAmqpBinary().get().offset() + 1;
+                break;
+            case BINARY4:
+                payloadOffset = value.getAsAmqpBinary().get().offset() + 4;
+                break;
+            case STRING1:
+            case STRING4:
+                payloadOffset = value.getAsAmqpString().get().offset() + value.getAsAmqpString().fieldSizeLength();
+                break;
+            }
+        }
+        return payloadOffset;
+    }
+
+    private long totalPayloadSize(
+        AmqpSectionFW amqpSection)
+    {
+        long totalPayloadSize = 0;
+        if (amqpSection.kind() == VALUE)
+        {
+            AmqpValueFW value = amqpSection.amqpValue();
+            AmqpType type = value.kind();
+            switch (type)
+            {
+            case BINARY1:
+            case BINARY4:
+                totalPayloadSize = value.getAsAmqpBinary().length();
+                break;
+            case STRING1:
+            case STRING4:
+                totalPayloadSize = value.getAsAmqpString().length();
+                break;
+            }
+        }
+        else if (amqpSection.kind() == SEQUENCE)
+        {
+            totalPayloadSize = amqpSection.amqpSequence().sizeof();
+        }
+        else if (amqpSection.kind() == DATA)
+        {
+            totalPayloadSize = amqpSection.data().sizeof();
+        }
+        return totalPayloadSize;
+    }
+
+    private long sectionHeaderSize(
+        AmqpSectionFW amqpSection)
+    {
+        long headerSize = amqpSection.limit();
+        if (amqpSection.kind() == VALUE)
+        {
+            AmqpValueFW value = amqpSection.amqpValue();
+            AmqpType type = value.kind();
+            switch (type)
+            {
+            case BINARY1:
+            case BINARY4:
+                headerSize = (value.getAsAmqpBinary().limit() - value.getAsAmqpBinary().get().length()) - amqpSection.offset();
+                break;
+            case STRING1:
+            case STRING4:
+                headerSize = (value.getAsAmqpString().limit() - value.getAsAmqpString().length()) - amqpSection.offset();
+                break;
+            }
+        }
+        else if (amqpSection.kind() == SEQUENCE)
+        {
+            headerSize -= amqpSection.amqpSequence().offset();
+        }
+        else if (amqpSection.kind() == DATA)
+        {
+            headerSize -= amqpSection.data().offset();
+        }
+        return headerSize;
     }
 
     private Array32FW<AmqpAnnotationFW> decodeAnnotations(
@@ -2126,13 +2219,14 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties,
             OctetsFW payload,
             int reserved,
-            int deferred)
+            int deferred,
+            AmqpSectionFW amqpSection)
         {
             AmqpSession session = sessions.get(incomingChannel);
             if (session != null)
             {
                 session.onDecodeTransfer(traceId, authorization, transfer, annotations, properties, applicationProperties,
-                    payload, reserved, deferred);
+                    payload, reserved, deferred, amqpSection);
             }
             else
             {
@@ -2497,7 +2591,8 @@ public final class AmqpServerFactory implements StreamFactory
                 AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties,
                 OctetsFW payload,
                 int reserved,
-                int deferred)
+                int deferred,
+                AmqpSectionFW amqpSection)
             {
                 this.nextIncomingId++;
                 this.remoteOutgoingWindow--;
@@ -2515,6 +2610,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final BoundedOctetsFW deliveryTag = transfer.hasDeliveryTag() ? transfer.deliveryTag() : null;
                     final long messageFormat = transfer.hasMessageFormat() ? transfer.messageFormat() : 0;
                     int flags = 0;
+                    AmqpBodyKind bodyKind = AmqpBodyKind.VALUE;
                     if (transfer.hasSettled() && transfer.settled() == 1)
                     {
                         flags = settled(flags);
@@ -2531,6 +2627,32 @@ public final class AmqpServerFactory implements StreamFactory
                     {
                         flags = batchable(flags);
                     }
+                    if (amqpSection != null)
+                    {
+                        AmqpDescribedType type = amqpSection.kind();
+                        switch (type)
+                        {
+                        case DATA:
+                            bodyKind = AmqpBodyKind.DATA;
+                            break;
+                        case SEQUENCE:
+                            bodyKind = AmqpBodyKind.SEQUENCE;
+                            break;
+                        case VALUE:
+                            AmqpType valueType = amqpSection.amqpValue().kind();
+                            switch (valueType)
+                            {
+                            case STRING1:
+                            case STRING4:
+                                bodyKind = AmqpBodyKind.VALUE_STRING;
+                                break;
+                            case BINARY1:
+                            case BINARY4:
+                                bodyKind = AmqpBodyKind.VALUE_BINARY;
+                            }
+                            break;
+                        }
+                    }
                     AmqpServerStream link = links.get(transfer.handle());
                     if (link.deliveryId == -1 || !transfer.hasMore() || transfer.more() == 0)
                     {
@@ -2543,7 +2665,7 @@ public final class AmqpServerFactory implements StreamFactory
                     else
                     {
                         link.onDecodeTransfer(traceId, authorization, deliveryId, deliveryTag, messageFormat, flags,
-                            annotations, properties, applicationProperties, reserved, payload, deferred);
+                            annotations, properties, applicationProperties, reserved, payload, deferred, bodyKind);
                     }
                 }
             }
@@ -2653,7 +2775,8 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties,
                     int reserved,
                     OctetsFW payload,
-                    int deferred)
+                    int deferred,
+                    AmqpBodyKind bodyKind)
                 {
                     Flyweight dataEx = EMPTY_OCTETS;
 
@@ -2678,6 +2801,7 @@ public final class AmqpServerFactory implements StreamFactory
                         {
                             amqpDataEx.applicationProperties(decodeApplicationProperties(applicationProperties));
                         }
+                        amqpDataEx.bodyKind(b -> b.set(bodyKind));
                         dataEx = amqpDataEx.build();
                     }
 

@@ -654,19 +654,28 @@ scope protocol
             AmqpPerformative performative;
         }
 
+        list AmqpHeader using AmqpList
+        {
+            AmqpBoolean durable;
+            AmqpUByte priority;
+            AmqpMilliseconds ttl;
+            AmqpBoolean firstAcquirer;
+            AmqpUInt deliveryCount;
+        }
+
 //        // 3.2 Message Format
-//        union AmqpSection switch (AmqpDescribedType)
-//        {
+        union AmqpSection switch (AmqpDescribedType)
+        {
 //            case HEADER: AmqpHeader header;
 //            case DELIVERY_ANNOTATIONS: AmqpMap deliveryAnnotations;
 //            case MESSAGE_ANNOTATIONS: AmqpMap messageAnnotations;
 //            case PROPERTIES: AmqpProperties properties;
 //            case APPLICATION_PROPERTIES: AmqpMap applicationProperties;
-//            case DATA: AmqpBinary data;
-//            case SEQUENCE: AmqpList amqpSequence;
-//            case VALUE: AmqpValue amqpValue;
+            case DATA: AmqpBinary data;
+            case SEQUENCE: AmqpList amqpSequence;
+            case VALUE: AmqpValue amqpValue;
 //            case FOOTER: AmqpMap footer;
-//        }
+        }
 
         struct AmqpValueHeader
         {
@@ -675,16 +684,6 @@ scope protocol
             uint32 valueLength;
         }
 
-//
-//        list AmqpHeader (AmqpList)
-//        {
-//            AmqpBoolean durable;
-//            AmqpUByte priority;
-//            AmqpMilliseconds ttl;
-//            AmqpBoolean firstAcquirer;
-//            AmqpUInt deliveryCount;
-//        }
-//
 //        variant AmqpMessageId switch (AmqpType)
 //        {
 //            case ULONG8:
