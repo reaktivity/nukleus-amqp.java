@@ -867,7 +867,8 @@ public final class AmqpServerFactory implements StreamFactory
     private long sectionHeaderSize(
         AmqpSectionFW amqpSection)
     {
-        long headerSize = amqpSection.limit();
+        long headerLimit = amqpSection.limit();
+        long headerOffset = amqpSection.offset();
         if (amqpSection.kind() == VALUE)
         {
             AmqpValueFW value = amqpSection.amqpValue();
@@ -876,23 +877,23 @@ public final class AmqpServerFactory implements StreamFactory
             {
             case BINARY1:
             case BINARY4:
-                headerSize = (value.getAsAmqpBinary().limit() - value.getAsAmqpBinary().get().length()) - amqpSection.offset();
+                headerLimit = value.getAsAmqpBinary().limit() - value.getAsAmqpBinary().get().length();
                 break;
             case STRING1:
             case STRING4:
-                headerSize = (value.getAsAmqpString().limit() - value.getAsAmqpString().length()) - amqpSection.offset();
+                headerLimit = value.getAsAmqpString().limit() - value.getAsAmqpString().length();
                 break;
             }
         }
         else if (amqpSection.kind() == SEQUENCE)
         {
-            headerSize -= amqpSection.amqpSequence().offset();
+            headerOffset = amqpSection.amqpSequence().offset();
         }
         else if (amqpSection.kind() == DATA)
         {
-            headerSize -= amqpSection.data().offset();
+            headerOffset = amqpSection.data().offset();
         }
-        return headerSize;
+        return headerLimit - headerOffset;
     }
 
     private Array32FW<AmqpAnnotationFW> decodeAnnotations(
@@ -1084,6 +1085,39 @@ public final class AmqpServerFactory implements StreamFactory
         server.onDecodeError(traceId, authorization, DECODE_ERROR);
         server.decoder = decodeIgnoreAll;
         return limit;
+    }
+
+    private static AmqpBodyKind bodyKind(
+        AmqpSectionFW section)
+    {
+        AmqpBodyKind bodyKind = AmqpBodyKind.VALUE;
+        if (section != null)
+        {
+            AmqpDescribedType type = section.kind();
+            switch (type)
+            {
+            case DATA:
+                bodyKind = AmqpBodyKind.DATA;
+                break;
+            case SEQUENCE:
+                bodyKind = AmqpBodyKind.SEQUENCE;
+                break;
+            case VALUE:
+                AmqpType valueType = section.amqpValue().kind();
+                switch (valueType)
+                {
+                case STRING1:
+                case STRING4:
+                    bodyKind = AmqpBodyKind.VALUE_STRING;
+                    break;
+                case BINARY1:
+                case BINARY4:
+                    bodyKind = AmqpBodyKind.VALUE_BINARY;
+                }
+                break;
+            }
+        }
+        return bodyKind;
     }
 
     private final class AmqpServer
@@ -2610,7 +2644,6 @@ public final class AmqpServerFactory implements StreamFactory
                     final BoundedOctetsFW deliveryTag = transfer.hasDeliveryTag() ? transfer.deliveryTag() : null;
                     final long messageFormat = transfer.hasMessageFormat() ? transfer.messageFormat() : 0;
                     int flags = 0;
-                    AmqpBodyKind bodyKind = AmqpBodyKind.VALUE;
                     if (transfer.hasSettled() && transfer.settled() == 1)
                     {
                         flags = settled(flags);
@@ -2627,32 +2660,7 @@ public final class AmqpServerFactory implements StreamFactory
                     {
                         flags = batchable(flags);
                     }
-                    if (amqpSection != null)
-                    {
-                        AmqpDescribedType type = amqpSection.kind();
-                        switch (type)
-                        {
-                        case DATA:
-                            bodyKind = AmqpBodyKind.DATA;
-                            break;
-                        case SEQUENCE:
-                            bodyKind = AmqpBodyKind.SEQUENCE;
-                            break;
-                        case VALUE:
-                            AmqpType valueType = amqpSection.amqpValue().kind();
-                            switch (valueType)
-                            {
-                            case STRING1:
-                            case STRING4:
-                                bodyKind = AmqpBodyKind.VALUE_STRING;
-                                break;
-                            case BINARY1:
-                            case BINARY4:
-                                bodyKind = AmqpBodyKind.VALUE_BINARY;
-                            }
-                            break;
-                        }
-                    }
+                    AmqpBodyKind bodyKind = bodyKind(amqpSection);
                     AmqpServerStream link = links.get(transfer.handle());
                     if (link.deliveryId == -1 || !transfer.hasMore() || transfer.more() == 0)
                     {
