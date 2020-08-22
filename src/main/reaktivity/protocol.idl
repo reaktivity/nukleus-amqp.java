@@ -72,6 +72,18 @@ scope protocol
             ARRAY4 (0xf0)
         }
 
+        struct AmqpVariableLength8
+        {
+            AmqpType constructor;
+            uint8 length;
+        }
+
+        struct AmqpVariableLength32
+        {
+            AmqpType constructor;
+            uint32 length;
+        }
+
         enum AmqpFrameType (uint8)
         {
             OPEN (0x10),
@@ -143,7 +155,7 @@ scope protocol
             case LONG1: int8;
         }
 
-//        TODO: will be implelemted later
+//        TODO: will be implemented later
 //        variant AmqpFloat switch (AmqpType)
 //        {
 //            case FLOAT: octets[4];
@@ -671,9 +683,9 @@ scope protocol
 //            case MESSAGE_ANNOTATIONS: AmqpMap messageAnnotations;
 //            case PROPERTIES: AmqpProperties properties;
 //            case APPLICATION_PROPERTIES: AmqpMap applicationProperties;
-            case DATA: AmqpBinary data;
-            case SEQUENCE: AmqpList amqpSequence;
-            case VALUE: AmqpValue amqpValue;
+            case DATA: AmqpBinary data; // -> octets
+            case SEQUENCE: AmqpList amqpSequence; // -> octets
+            case VALUE: AmqpValue amqpValue; // -> octets
 //            case FOOTER: AmqpMap footer;
         }
 

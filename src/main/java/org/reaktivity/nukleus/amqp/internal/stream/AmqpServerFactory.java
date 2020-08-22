@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.amqp.internal.stream;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.aborted;
@@ -32,9 +33,12 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.BEGIN;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.CLOSE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DATA;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DELIVERY_ANNOTATIONS;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DETACH;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.END;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.FLOW;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.FOOTER;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.HEADER;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.OPEN;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.PROPERTIES;
@@ -58,7 +62,6 @@ import static org.reaktivity.nukleus.budget.BudgetCreditor.NO_CREDITOR_INDEX;
 import static org.reaktivity.nukleus.budget.BudgetDebitor.NO_DEBITOR_INDEX;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.Map;
@@ -120,6 +123,8 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpULongFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpValueFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpValueHeaderFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpVariableLength32FW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpVariableLength8FW;
 import org.reaktivity.nukleus.amqp.internal.types.control.AmqpRouteExFW;
 import org.reaktivity.nukleus.amqp.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.AbortFW;
@@ -181,6 +186,8 @@ public final class AmqpServerFactory implements StreamFactory
 
     private final OctetsFW payloadRO = new OctetsFW();
     private final OctetsFW.Builder payloadRW = new OctetsFW.Builder();
+    private final OctetsFW.Builder bodyRW = new OctetsFW.Builder();
+    private final OctetsFW.Builder lengthRW = new OctetsFW.Builder();
 
     private final AmqpProtocolHeaderFW amqpProtocolHeaderRO = new AmqpProtocolHeaderFW();
     private final AmqpFrameHeaderFW amqpFrameHeaderRO = new AmqpFrameHeaderFW();
@@ -207,6 +214,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpCloseFW.Builder amqpCloseRW = new AmqpCloseFW.Builder();
     private final AmqpErrorListFW.Builder amqpErrorListRW = new AmqpErrorListFW.Builder();
     private final AmqpValueHeaderFW.Builder amqpValueHeaderRW = new AmqpValueHeaderFW.Builder();
+    private final AmqpSectionFW.Builder amqpSectionRW = new AmqpSectionFW.Builder();
     private final AmqpStringFW.Builder amqpStringRW = new AmqpStringFW.Builder();
     private final AmqpStringFW.Builder amqpValueRW = new AmqpStringFW.Builder();
     private final AmqpSymbolFW.Builder amqpSymbolRW = new AmqpSymbolFW.Builder();
@@ -215,6 +223,8 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpBinaryFW.Builder amqpBinaryRW = new AmqpBinaryFW.Builder();
     private final AmqpByteFW.Builder amqpByteRW = new AmqpByteFW.Builder();
     private final AmqpULongFW.Builder amqpULongRW = new AmqpULongFW.Builder();
+    private final AmqpVariableLength8FW.Builder amqpVariableLength8RW = new AmqpVariableLength8FW.Builder();
+    private final AmqpVariableLength32FW.Builder amqpVariableLength32RW = new AmqpVariableLength32FW.Builder();
     private final AmqpDescribedTypeFW.Builder amqpDescribedTypeRW = new AmqpDescribedTypeFW.Builder();
     private final AmqpMessagePropertiesFW.Builder amqpPropertiesRW = new AmqpMessagePropertiesFW.Builder();
     private final Array32FW.Builder<AmqpAnnotationFW.Builder, AmqpAnnotationFW> annotationRW =
@@ -246,7 +256,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final LongFunction<BudgetDebitor> supplyDebitor;
 
     private final AmqpServerDecoder decodeFrameType = this::decodeFrameType;
-    private final AmqpServerDecoder decodeHeader = this::decodeHeader;
+    private final AmqpServerDecoder decodeProtocolHeader = this::decodeProtocolHeader;
     private final AmqpServerDecoder decodeOpen = this::decodeOpen;
     private final AmqpServerDecoder decodeBegin = this::decodeBegin;
     private final AmqpServerDecoder decodeAttach = this::decodeAttach;
@@ -257,6 +267,16 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeClose = this::decodeClose;
     private final AmqpServerDecoder decodeIgnoreAll = this::decodeIgnoreAll;
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
+
+    private final AmqpSectionDecoder decodeHeader = this::decodeHeader;
+    private final AmqpSectionDecoder decodeDeliveryAnnotations = this::decodeDeliveryAnnotations;
+    private final AmqpSectionDecoder decodeMessageAnnotations = this::decodeMessageAnnotations;
+    private final AmqpSectionDecoder decodeProperties = this::decodeProperties;
+    private final AmqpSectionDecoder decodeApplicationProperties = this::decodeApplicationProperties;
+    private final AmqpSectionDecoder decodeData = this::decodeData;
+    private final AmqpSectionDecoder decodeSequence = this::decodeSequence;
+    private final AmqpSectionDecoder decodeValue = this::decodeValue;
+    private final AmqpSectionDecoder decodeFooter = this::decodeFooter;
 
     private final int outgoingWindow;
     private final StringFW containerId;
@@ -276,6 +296,21 @@ public final class AmqpServerFactory implements StreamFactory
         decodersByPerformative.put(END, decodeEnd);
         decodersByPerformative.put(CLOSE, decodeClose);
         this.decodersByPerformative = decodersByPerformative;
+    }
+
+    private final Map<AmqpDescribedType, AmqpSectionDecoder> decodersBySectionType;
+    {
+        final Map<AmqpDescribedType, AmqpSectionDecoder> decodersBySectionType = new EnumMap<>(AmqpDescribedType.class);
+        decodersBySectionType.put(HEADER, decodeHeader);
+        decodersBySectionType.put(DELIVERY_ANNOTATIONS, decodeDeliveryAnnotations);
+        decodersBySectionType.put(MESSAGE_ANNOTATIONS, decodeMessageAnnotations);
+        decodersBySectionType.put(PROPERTIES, decodeProperties);
+        decodersBySectionType.put(APPLICATION_PROPERTIES, decodeApplicationProperties);
+        decodersBySectionType.put(DATA, decodeData);
+        decodersBySectionType.put(SEQUENCE, decodeSequence);
+        decodersBySectionType.put(VALUE, decodeValue);
+        decodersBySectionType.put(FOOTER, decodeFooter);
+        this.decodersBySectionType = decodersBySectionType;
     }
 
     public AmqpServerFactory(
@@ -549,6 +584,30 @@ public final class AmqpServerFactory implements StreamFactory
             int limit);
     }
 
+    @FunctionalInterface
+    private interface AmqpSectionDecoder
+    {
+        int decode(
+            long traceId,
+            long authorization,
+            long budgetId);
+    }
+
+    @FunctionalInterface
+    private interface AmqpSectionEncoder
+    {
+        int encode(
+            long traceId,
+            long authorization,
+            int channel,
+            long handle,
+            int flags,
+            OctetsFW extension,
+            DirectBuffer buffer,
+            int offset,
+            int limit);
+    }
+
     private int decodeFrameType(
         AmqpServer server,
         final long traceId,
@@ -584,7 +643,7 @@ public final class AmqpServerFactory implements StreamFactory
         return progress;
     }
 
-    private int decodeHeader(
+    private int decodeProtocolHeader(
         AmqpServer server,
         final long traceId,
         final long authorization,
@@ -1087,6 +1146,87 @@ public final class AmqpServerFactory implements StreamFactory
         return limit;
     }
 
+    private int decodeHeader(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeDeliveryAnnotations(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeMessageAnnotations(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeProperties(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeApplicationProperties(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeData(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeSequence(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeValue(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
+    private int decodeFooter(
+        long traceId,
+        long authorization,
+        long budgetId)
+    {
+        // TODO
+        return 0;
+    }
+
     private static AmqpBodyKind bodyKind(
         AmqpSectionFW section)
     {
@@ -1107,12 +1247,23 @@ public final class AmqpServerFactory implements StreamFactory
                 switch (valueType)
                 {
                 case STRING1:
+                    bodyKind = AmqpBodyKind.VALUE_STRING8;
+                    break;
                 case STRING4:
-                    bodyKind = AmqpBodyKind.VALUE_STRING;
+                    bodyKind = AmqpBodyKind.VALUE_STRING32;
+                    break;
+                case SYMBOL1:
+                    bodyKind = AmqpBodyKind.VALUE_SYMBOL8;
+                    break;
+                case SYMBOL4:
+                    bodyKind = AmqpBodyKind.VALUE_SYMBOL32;
                     break;
                 case BINARY1:
+                    bodyKind = AmqpBodyKind.VALUE_BINARY8;
+                    break;
                 case BINARY4:
-                    bodyKind = AmqpBodyKind.VALUE_BINARY;
+                    bodyKind = AmqpBodyKind.VALUE_BINARY32;
+                    break;
                 }
                 break;
             }
@@ -1174,7 +1325,7 @@ public final class AmqpServerFactory implements StreamFactory
             this.budgetId = supplyBudgetId.getAsLong();
             this.affinity = affinity;
             this.replySharedBudgetId = budgetId;
-            this.decoder = decodeHeader;
+            this.decoder = decodeProtocolHeader;
             this.sessions = new Int2ObjectHashMap<>();
         }
 
@@ -1348,130 +1499,6 @@ public final class AmqpServerFactory implements StreamFactory
             doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
-        private int doEncodeTransfer(
-            long traceId,
-            long authorization,
-            int channel,
-            long handle,
-            int flags,
-            OctetsFW extension,
-            OctetsFW payload)
-        {
-            final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
-            int transferFrames = 0;
-            if (dataEx != null)
-            {
-                assert (flags & FLAG_INIT) != 0;
-                final int deferred = dataEx.deferred();
-                final int transferFlags = dataEx.flags();
-                int extraBufferOffset = 0;
-                final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations =
-                    amqpAnnotationsAndProperties.annotations(dataEx.annotations(), extraBufferOffset);
-                extraBufferOffset = annotations == null ? extraBufferOffset : annotations.limit();
-                final AmqpMessagePropertiesFW properties = properties(dataEx, extraBufferOffset);
-                extraBufferOffset = properties == null ? extraBufferOffset : properties.limit();
-                final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties =
-                    amqpAnnotationsAndProperties.properties(dataEx, extraBufferOffset);
-                extraBufferOffset = applicationProperties == null ? extraBufferOffset : applicationProperties.limit();
-                int payloadIndex = 0;
-                int payloadSize = payload.sizeof();
-                int originalPayloadSize = payloadSize;
-                AmqpValueHeaderFW valueHeader = amqpValueHeaderRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
-                    .sectionType(b -> b.set(VALUE))
-                    .valueType(b -> b.set(AmqpType.BINARY4))
-                    .valueLength(deferred == 0 ? originalPayloadSize : originalPayloadSize + deferred)
-                    .build();
-                extraBufferOffset = valueHeader.limit();
-                final BoundedOctetsFW deliveryTag =
-                    amqpBinaryRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity())
-                        .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
-                        .build()
-                        .get();
-                final int valueHeaderSize = valueHeader.sizeof();
-                final int annotationsSize = annotations == null ? 0 : DESCRIBED_TYPE_SIZE + annotations.sizeof();
-                final int propertiesSize = properties == null ? 0 : DESCRIBED_TYPE_SIZE + properties.sizeof();
-                final int applicationPropertiesSize = applicationProperties == null ? 0 :
-                    DESCRIBED_TYPE_SIZE + applicationProperties.sizeof();
-                while (payloadIndex < originalPayloadSize)
-                {
-                    AmqpTransferFW.Builder builder = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity());
-                    AmqpTransferFW transfer = payloadIndex > 0 ? builder.handle(handle).build() : builder.handle(handle)
-                        .deliveryId(dataEx.deliveryId())
-                        .deliveryTag(deliveryTag)
-                        .messageFormat(dataEx.messageFormat())
-                        .settled(isSettled(transferFlags) ? 1 : 0)
-                        .build();
-                    final int transferFrameSize = transfer.sizeof() + Byte.BYTES;
-                    payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity());
-                    if (payloadIndex == 0)
-                    {
-                        if (FRAME_HEADER_SIZE + transferFrameSize + annotationsSize + propertiesSize +
-                            applicationPropertiesSize + valueHeaderSize + payloadSize > encodeMaxFrameSize || flags == FLAG_INIT)
-                        {
-                            transfer = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
-                                .handle(handle)
-                                .deliveryId(dataEx.deliveryId())
-                                .deliveryTag(deliveryTag)
-                                .messageFormat(dataEx.messageFormat())
-                                .settled(isSettled(transferFlags) ? 1 : 0)
-                                .more(1)
-                                .build();
-                            if (flags == FLAG_INIT_AND_FIN)
-                            {
-                                payloadSize = (int) (encodeMaxFrameSize - FRAME_HEADER_SIZE - transferFrameSize -
-                                    annotationsSize - propertiesSize - applicationPropertiesSize - valueHeaderSize);
-                            }
-                        }
-                        AmqpFrameHeaderFW transferFrame = setTransferFrame(transfer, FRAME_HEADER_SIZE + transfer.sizeof() +
-                            annotationsSize + propertiesSize + applicationPropertiesSize + valueHeaderSize + payloadSize,
-                            channel);
-                        int sectionOffset = transferFrame.limit();
-                        amqpSection(annotations, properties, applicationProperties, sectionOffset);
-                        payloadRW.put(valueHeader.buffer(), valueHeader.offset(), valueHeader.sizeof());
-                    }
-                    else
-                    {
-                        if (payloadIndex + (encodeMaxFrameSize - FRAME_HEADER_SIZE - transferFrameSize) > originalPayloadSize)
-                        {
-                            payloadSize = originalPayloadSize - payloadIndex;
-                        }
-                        else
-                        {
-                            transfer = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
-                                .handle(handle)
-                                .deliveryId(dataEx.deliveryId())
-                                .deliveryTag(deliveryTag)
-                                .messageFormat(dataEx.messageFormat())
-                                .settled(isSettled(transferFlags) ? 1 : 0)
-                                .more(1)
-                                .build();
-                            payloadSize = (int) (encodeMaxFrameSize - FRAME_HEADER_SIZE - transferFrameSize);
-                        }
-                        setTransferFrame(transfer, FRAME_HEADER_SIZE + transfer.sizeof() + payloadSize, channel);
-                    }
-                    payloadRW.put(payload.buffer(), payload.offset() + payloadIndex, payloadSize);
-                    OctetsFW transferWithFrameHeader = payloadRW.build();
-                    doNetworkData(traceId, authorization, 0L, transferWithFrameHeader);
-                    payloadIndex += payloadSize;
-                    transferFrames++;
-                }
-            }
-            else
-            {
-                AmqpTransferFW.Builder transferBuilder = amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE,
-                    frameBuffer.capacity())
-                    .handle(handle);
-                AmqpTransferFW transfer = flags == FLAG_FIN ? transferBuilder.build() : transferBuilder.more(1).build();
-                payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity());
-                setTransferFrame(transfer, FRAME_HEADER_SIZE + transfer.sizeof() + payload.sizeof(), channel);
-                payloadRW.put(payload.buffer(), payload.offset(), payload.sizeof());
-                OctetsFW transferWithFrameHeader = payloadRW.build();
-                doNetworkData(traceId, authorization, 0L, transferWithFrameHeader);
-                transferFrames++;
-            }
-            return transferFrames;
-        }
-
         private void amqpSection(
             AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations,
             AmqpMessagePropertiesFW properties,
@@ -1484,7 +1511,7 @@ public final class AmqpServerFactory implements StreamFactory
                     frameBuffer.capacity())
                     .set(MESSAGE_ANNOTATIONS)
                     .build();
-                payloadRW.put(messageAnnotationsType.buffer(), messageAnnotationsType.offset(),
+                bodyRW.put(messageAnnotationsType.buffer(), messageAnnotationsType.offset(),
                     messageAnnotationsType.sizeof())
                     .put(annotations.buffer(), annotations.offset(), annotations.sizeof());
                 sectionOffset = messageAnnotationsType.limit();
@@ -1495,7 +1522,7 @@ public final class AmqpServerFactory implements StreamFactory
                     frameBuffer.capacity())
                     .set(PROPERTIES)
                     .build();
-                payloadRW.put(propertiesType.buffer(), propertiesType.offset(), propertiesType.sizeof())
+                bodyRW.put(propertiesType.buffer(), propertiesType.offset(), propertiesType.sizeof())
                     .put(properties.buffer(), properties.offset(), properties.sizeof());
                 sectionOffset = propertiesType.limit();
             }
@@ -1505,7 +1532,7 @@ public final class AmqpServerFactory implements StreamFactory
                     frameBuffer.capacity())
                     .set(APPLICATION_PROPERTIES)
                     .build();
-                payloadRW.put(applicationPropertiesType.buffer(), applicationPropertiesType.offset(),
+                bodyRW.put(applicationPropertiesType.buffer(), applicationPropertiesType.offset(),
                     applicationPropertiesType.sizeof())
                     .put(applicationProperties.buffer(), applicationProperties.offset(), applicationProperties.sizeof());
             }
@@ -2318,7 +2345,7 @@ public final class AmqpServerFactory implements StreamFactory
         private boolean isAmqpHeaderValid(
             AmqpProtocolHeaderFW header)
         {
-            return PROTOCOL_HEADER == header.buffer().getLong(header.offset(), ByteOrder.BIG_ENDIAN);
+            return PROTOCOL_HEADER == header.buffer().getLong(header.offset(), BIG_ENDIAN);
         }
 
         private void cleanupNetwork(
@@ -2726,6 +2753,14 @@ public final class AmqpServerFactory implements StreamFactory
                 private StringFW addressFrom;
                 private StringFW addressTo;
 
+                private AmqpSectionDecoder sectionDecoder;
+                private AmqpSectionEncoder sectionEncoder;
+                private int encodeRemaining;
+                private AmqpBodyKind bodyKind;
+                private long totalLength;
+
+                private final AmqpSectionEncoder encodeInit = this::encodeInit;
+
                 AmqpServerStream(
                     String addressFrom,
                     String addressTo,
@@ -2740,6 +2775,8 @@ public final class AmqpServerFactory implements StreamFactory
                     this.initialId = supplyInitialId.applyAsLong(newRouteId);
                     this.replyId = supplyReplyId.applyAsLong(initialId);
                     this.application = router.supplyReceiver(initialId);
+                    this.sectionEncoder = encodeInit;
+                    this.bodyKind = AmqpBodyKind.VALUE;
                 }
 
                 private void onDecodeAttach(
@@ -2758,6 +2795,575 @@ public final class AmqpServerFactory implements StreamFactory
                         amqpReceiverSettleMode);
 
                     correlations.put(replyId, this::onApplication);
+                }
+
+                private int encodeTransfer(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    amqpTransferRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity());
+                    if ((flags & FLAG_INIT) == FLAG_INIT)
+                    {
+                        final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                        assert dataEx != null;
+
+                        final int transferFlags = dataEx.flags();
+
+                        final BoundedOctetsFW deliveryTag =
+                            amqpBinaryRW.wrap(stringBuffer, 0, stringBuffer.capacity())
+                                .set(dataEx.deliveryTag().bytes().value(), 0, dataEx.deliveryTag().length())
+                                .build()
+                                .get();
+
+                        amqpTransferRW.handle(handle)
+                            .deliveryId(dataEx.deliveryId())
+                            .deliveryTag(deliveryTag)
+                            .messageFormat(dataEx.messageFormat())
+                            .settled(isSettled(transferFlags) ? 1 : 0);
+                    }
+                    else
+                    {
+                        amqpTransferRW.handle(handle);
+                    }
+
+                    if ((flags & FLAG_FIN) == 0)
+                    {
+                        amqpTransferRW.more(1);
+                    }
+                    AmqpTransferFW transfer = amqpTransferRW.build();
+
+                    totalLength += FRAME_HEADER_SIZE + transfer.sizeof();
+
+                    AmqpFrameHeaderFW transferWithHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
+                        .size(totalLength)
+                        .doff(2)
+                        .type(0)
+                        .channel(channel)
+                        .performative(b -> b.transfer(transfer))
+                        .build();
+
+                    payloadRW.put(transferWithHeader.buffer(), transferWithHeader.offset(), transferWithHeader.sizeof());
+                    this.sectionEncoder = this::encodeInit;
+                    return limit;
+                }
+
+                private int encodeInit(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    payloadRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity());
+                    if ((flags & FLAG_INIT) == FLAG_INIT)
+                    {
+                        final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                        assert dataEx != null;
+                        this.bodyKind = dataEx.bodyKind().get();
+
+                        int extraBufferOffset = 0;
+                        final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations =
+                            amqpAnnotationsAndProperties.annotations(dataEx.annotations(), extraBufferOffset);
+                        extraBufferOffset = annotations == null ? extraBufferOffset : annotations.limit();
+                        final AmqpMessagePropertiesFW properties = properties(dataEx, extraBufferOffset);
+                        extraBufferOffset = properties == null ? extraBufferOffset : properties.limit();
+                        final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperties =
+                            amqpAnnotationsAndProperties.properties(dataEx, extraBufferOffset);
+                        extraBufferOffset = applicationProperties == null ? extraBufferOffset : applicationProperties.limit();
+
+                        final int annotationsSize = annotations == null ? 0 : DESCRIBED_TYPE_SIZE + annotations.sizeof();
+                        final int propertiesSize = properties == null ? 0 : DESCRIBED_TYPE_SIZE + properties.sizeof();
+                        final int applicationPropertiesSize = applicationProperties == null ? 0 :
+                            DESCRIBED_TYPE_SIZE + applicationProperties.sizeof();
+
+                        bodyRW.wrap(extraBuffer, extraBufferOffset, extraBuffer.capacity());
+
+                        amqpSection(annotations, properties, applicationProperties, FRAME_HEADER_SIZE);
+                        totalLength = annotationsSize + propertiesSize + applicationPropertiesSize;
+
+                        switch (bodyKind)
+                        {
+                        case DATA:
+                            this.sectionEncoder = this::encodeSectionData;
+                            break;
+                        case SEQUENCE:
+                            this.sectionEncoder = this::encodeSectionSequence;
+                            break;
+                        case VALUE:
+                            this.sectionEncoder = this::encodeSectionValue;
+                            break;
+                        case VALUE_STRING8:
+                            this.sectionEncoder = this::encodeSectionValueString8;
+                            break;
+                        case VALUE_STRING32:
+                            this.sectionEncoder = this::encodeSectionValueString32;
+                            break;
+                        case VALUE_BINARY8:
+                            this.sectionEncoder = this::encodeSectionValueBinary8;
+                            break;
+                        case VALUE_BINARY32:
+                            this.sectionEncoder = this::encodeSectionValueBinary32;
+                            break;
+                        case VALUE_SYMBOL8:
+                            this.sectionEncoder = this::encodeSectionValueSymbol8;
+                            break;
+                        case VALUE_SYMBOL32:
+                            this.sectionEncoder = this::encodeSectionValueSymbol32;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        bodyRW.wrap(extraBuffer, 0, extraBuffer.capacity());
+                        switch (bodyKind)
+                        {
+                        case DATA:
+                            this.sectionEncoder = this::encodeSectionDataBytes;
+                            break;
+                        case SEQUENCE:
+                            this.sectionEncoder = this::encodeSectionSequenceBytes;
+                            break;
+                        case VALUE:
+                        case VALUE_STRING8:
+                        case VALUE_STRING32:
+                        case VALUE_BINARY8:
+                        case VALUE_BINARY32:
+                        case VALUE_SYMBOL8:
+                        case VALUE_SYMBOL32:
+                            this.sectionEncoder = this::encodeSectionValueBytes;
+                            break;
+                        }
+                    }
+
+                    return offset;
+                }
+
+                private int encodeSectionData(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    int progress = offset;
+                    AmqpType constructorByte = AmqpType.valueOf(buffer.getByte(offset) & 0xFF);
+                    if (constructorByte != null)
+                    {
+                        AmqpDescribedTypeFW descriptor =
+                            amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(DATA).build();
+                        totalLength += descriptor.sizeof() + Byte.BYTES;
+                        bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof())
+                            .put(buffer, progress, Byte.BYTES);
+                        progress++;
+                        switch (constructorByte)
+                        {
+                        case BINARY1:
+                            this.encodeRemaining = buffer.getByte(progress);
+                            bodyRW.put(buffer, progress, Byte.BYTES);
+                            progress += Byte.BYTES;
+                            totalLength +=  Byte.BYTES;
+                            break;
+                        case BINARY4:
+                            this.encodeRemaining = buffer.getInt(progress, BIG_ENDIAN);
+                            bodyRW.put(buffer, progress, Integer.BYTES);
+                            progress += Integer.BYTES;
+                            totalLength += Integer.BYTES;
+                            break;
+                        }
+                        this.sectionEncoder = this::encodeSectionDataBytes;
+                    }
+                    return progress;
+                }
+
+                private int encodeSectionDataBytes(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    int progress = offset;
+                    int totalSize = limit - offset;
+                    int size = Math.min(encodeRemaining, totalSize);
+                    totalLength += size;
+                    bodyRW.put(buffer, offset, size);
+                    this.encodeRemaining = totalSize - size;
+                    progress += size;
+                    if (encodeRemaining > 0)
+                    {
+                        this.sectionEncoder = this::encodeSectionData;
+                    }
+                    return progress;
+                }
+
+                private int encodeSectionSequence(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    int progress = offset;
+                    AmqpType constructorByte = AmqpType.valueOf(buffer.getByte(offset) & 0xFF);
+                    if (constructorByte != null)
+                    {
+                        AmqpDescribedTypeFW descriptor =
+                            amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(SEQUENCE).build();
+                        totalLength += descriptor.sizeof() + Byte.BYTES;
+                        bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof())
+                            .put(buffer, progress, Byte.BYTES);
+                        progress++;
+                        switch (constructorByte)
+                        {
+                        case LIST1:
+                            this.encodeRemaining = buffer.getByte(progress);
+                            bodyRW.put(buffer, progress, Byte.BYTES);
+                            progress += Byte.BYTES;
+                            totalLength +=  Byte.BYTES;
+                            break;
+                        case LIST4:
+                            this.encodeRemaining = buffer.getInt(progress, BIG_ENDIAN);
+                            bodyRW.put(buffer, progress, Integer.BYTES);
+                            progress += Integer.BYTES;
+                            totalLength += Integer.BYTES;
+                            break;
+                        }
+                        this.sectionEncoder = this::encodeSectionSequenceBytes;
+                    }
+                    return progress;
+                }
+
+                private int encodeSectionSequenceBytes(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    int progress = offset;
+                    int totalSize = limit - offset;
+                    int size = Math.min(encodeRemaining, totalSize);
+                    totalLength += size;
+                    bodyRW.put(buffer, offset, size);
+                    this.encodeRemaining = totalSize - size;
+                    progress += size;
+                    if (encodeRemaining > 0)
+                    {
+                        this.sectionEncoder = this::encodeSectionSequence;
+                    }
+                    return progress;
+                }
+
+                private int encodeSectionValue(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    int progress = offset;
+                    int constructor = buffer.getByte(offset) & 0xF0;
+
+                    AmqpDescribedTypeFW descriptor =
+                        amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+                    totalLength += descriptor.sizeof() + Byte.BYTES;
+                    bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof())
+                        .put(buffer, progress, Byte.BYTES);
+                    progress++;
+
+                    switch (constructor)
+                    {
+                    case 0x40:
+                        this.encodeRemaining = 0;
+                        break;
+                    case 0x50:
+                        this.encodeRemaining = Byte.BYTES;
+                        break;
+                    case 0x60:
+                        this.encodeRemaining = Short.BYTES;
+                        break;
+                    case 0x70:
+                        this.encodeRemaining = Integer.BYTES;
+                        break;
+                    case 0x80:
+                        this.encodeRemaining = Long.BYTES;
+                        break;
+                    case 0x90:
+                        this.encodeRemaining = Long.BYTES + Long.BYTES;
+                        break;
+                    case 0xc0:
+                    case 0xe0:
+                        this.encodeRemaining = buffer.getByte(progress);
+                        bodyRW.put(buffer, progress, Byte.BYTES);
+                        progress += Byte.BYTES;
+                        totalLength +=  Byte.BYTES;
+                        break;
+                    case 0xd0:
+                    case 0xf0:
+                        this.encodeRemaining = buffer.getInt(progress, BIG_ENDIAN);
+                        bodyRW.put(buffer, progress, Integer.BYTES);
+                        progress += Integer.BYTES;
+                        totalLength += Integer.BYTES;
+                        break;
+                    }
+
+                    this.sectionEncoder = this::encodeSectionValueBytes;
+
+                    return progress;
+                }
+
+                private int encodeSectionValueString8(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                    assert dataEx != null;
+                    int deferred = dataEx.deferred();
+                    this.encodeRemaining = limit - offset;
+                    AmqpDescribedTypeFW descriptor =
+                        amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+                    bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+                    totalLength += descriptor.sizeof();
+
+                    int length = deferred == 0 ? encodeRemaining : encodeRemaining + deferred;
+                    AmqpVariableLength8FW bodyHeader =
+                        amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                            .constructor(c -> c.set(AmqpType.STRING1))
+                            .length(length)
+                            .build();
+                    int bodyHeaderSize = bodyHeader.sizeof();
+                    bodyRW.put(bodyHeader.buffer(), bodyHeader.offset(), bodyHeaderSize);
+                    totalLength += bodyHeaderSize;
+
+                    this.sectionEncoder = this::encodeSectionValueBytes;
+                    return offset;
+                }
+
+                private int encodeSectionValueString32(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                    assert dataEx != null;
+                    int deferred = dataEx.deferred();
+                    this.encodeRemaining = limit - offset;
+                    AmqpDescribedTypeFW descriptor =
+                        amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+                    bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+                    totalLength += descriptor.sizeof();
+
+                    int length = deferred == 0 ? encodeRemaining : encodeRemaining + deferred;
+                    AmqpVariableLength32FW bodyHeader =
+                        amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                            .constructor(c -> c.set(AmqpType.STRING4))
+                            .length(length)
+                            .build();
+                    int bodyHeaderSize = bodyHeader.sizeof();
+                    bodyRW.put(bodyHeader.buffer(), bodyHeader.offset(), bodyHeaderSize);
+                    totalLength += bodyHeaderSize;
+
+                    this.sectionEncoder = this::encodeSectionValueBytes;
+                    return offset;
+                }
+
+                private int encodeSectionValueBinary8(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                    assert dataEx != null;
+                    int deferred = dataEx.deferred();
+                    this.encodeRemaining = limit - offset;
+                    AmqpDescribedTypeFW descriptor =
+                        amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+                    bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+                    totalLength += descriptor.sizeof();
+
+                    int length = deferred == 0 ? encodeRemaining : encodeRemaining + deferred;
+                    AmqpVariableLength8FW bodyHeader =
+                        amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                            .constructor(c -> c.set(AmqpType.BINARY1))
+                            .length(length)
+                            .build();
+                    int bodyHeaderSize = bodyHeader.sizeof();
+                    bodyRW.put(bodyHeader.buffer(), bodyHeader.offset(), bodyHeaderSize);
+                    totalLength += bodyHeaderSize;
+
+                    this.sectionEncoder = this::encodeSectionValueBytes;
+                    return offset;
+                }
+
+                private int encodeSectionValueBinary32(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                    assert dataEx != null;
+                    int deferred = dataEx.deferred();
+                    this.encodeRemaining = limit - offset;
+                    AmqpDescribedTypeFW descriptor =
+                        amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+                    bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+                    totalLength += descriptor.sizeof();
+
+                    int length = deferred == 0 ? encodeRemaining : encodeRemaining + deferred;
+                    AmqpVariableLength32FW bodyHeader =
+                        amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                        .constructor(c -> c.set(AmqpType.BINARY4))
+                        .length(length)
+                        .build();
+                    int bodyHeaderSize = bodyHeader.sizeof();
+                    bodyRW.put(bodyHeader.buffer(), bodyHeader.offset(), bodyHeaderSize);
+                    totalLength += bodyHeaderSize;
+
+                    this.sectionEncoder = this::encodeSectionValueBytes;
+                    return offset;
+                }
+
+                private int encodeSectionValueSymbol8(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                    assert dataEx != null;
+                    int deferred = dataEx.deferred();
+                    this.encodeRemaining = limit - offset;
+                    AmqpDescribedTypeFW descriptor =
+                        amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+                    bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+                    totalLength += descriptor.sizeof();
+
+                    int length = deferred == 0 ? encodeRemaining : encodeRemaining + deferred;
+                    AmqpVariableLength8FW bodyHeader =
+                        amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                            .constructor(c -> c.set(AmqpType.SYMBOL1))
+                            .length(length)
+                            .build();
+                    int bodyHeaderSize = bodyHeader.sizeof();
+                    bodyRW.put(bodyHeader.buffer(), bodyHeader.offset(), bodyHeaderSize);
+                    totalLength += bodyHeaderSize;
+
+                    this.sectionEncoder = this::encodeSectionValueBytes;
+                    return offset;
+                }
+
+                private int encodeSectionValueSymbol32(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
+                    assert dataEx != null;
+                    int deferred = dataEx.deferred();
+                    this.encodeRemaining = limit - offset;
+                    AmqpDescribedTypeFW descriptor =
+                        amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+                    bodyRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+                    totalLength += descriptor.sizeof();
+
+                    int length = deferred == 0 ? encodeRemaining : encodeRemaining + deferred;
+                    AmqpVariableLength32FW bodyHeader =
+                        amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                            .constructor(c -> c.set(AmqpType.SYMBOL4))
+                            .length(length)
+                            .build();
+                    int bodyHeaderSize = bodyHeader.sizeof();
+                    bodyRW.put(bodyHeader.buffer(), bodyHeader.offset(), bodyHeaderSize);
+                    totalLength += bodyHeaderSize;
+
+                    this.sectionEncoder = this::encodeSectionValueBytes;
+                    return offset;
+                }
+
+                private int encodeSectionValueBytes(
+                    long traceId,
+                    long authorization,
+                    int channel,
+                    long handle,
+                    int flags,
+                    OctetsFW extension,
+                    DirectBuffer buffer,
+                    int offset,
+                    int limit)
+                {
+                    int progress = offset;
+                    int size = limit - offset;
+                    totalLength += size;
+                    bodyRW.put(buffer, offset, size);
+                    progress += size;
+                    return progress;
                 }
 
                 private void onDecodeFlow(
@@ -3091,6 +3697,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final long authorization = data.authorization();
                     final int flags = data.flags();
                     final OctetsFW extension = data.extension();
+                    final OctetsFW payload = data.payload();
 
                     this.replyBudget -= reserved;
                     replySharedBudget -= reserved;
@@ -3108,8 +3715,28 @@ public final class AmqpServerFactory implements StreamFactory
                         deliveryCount++;
                         linkCredit--;
                     }
-                    remoteIncomingWindow -= doEncodeTransfer(traceId, authorization, outgoingChannel, handle, flags, extension,
-                        data.payload());
+
+                    AmqpSectionEncoder previous = null;
+                    DirectBuffer buffer = payload.buffer();
+                    int progress = payload.offset();
+                    int limit = payload.limit();
+
+                    while (progress <= limit && previous != sectionEncoder)
+                    {
+                        previous = sectionEncoder;
+                        progress = sectionEncoder.encode(traceId, authorization, outgoingChannel, handle, flags, extension,
+                            buffer, progress, limit);
+                    }
+
+                    sectionEncoder = this::encodeTransfer;
+                    sectionEncoder.encode(traceId, authorization, outgoingChannel, handle, flags, extension, buffer, progress,
+                        limit);
+                    totalLength = 0;
+                    OctetsFW body = bodyRW.build();
+                    payloadRW.put(body);
+
+                    OctetsFW transfer = payloadRW.build();
+                    doNetworkData(traceId, authorization, 0L, transfer);
                 }
 
                 private void onApplicationEnd(
