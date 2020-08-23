@@ -282,6 +282,19 @@ scope protocol
             SASL_OUTCOME (0x44L)
         }
 
+        enum AmqpSectionType (AmqpDescriptor)
+        {
+            HEADER (0x70L),
+            DELIVERY_ANNOTATIONS (0x71L),
+            MESSAGE_ANNOTATIONS (0x72L),
+            PROPERTIES (0x73L),
+            APPLICATION_PROPERTIES (0x74L),
+            DATA (0x75L),
+            SEQUENCE (0x76L),
+            VALUE (0x77L),
+            FOOTER (0x78L)
+        }
+
         variant AmqpValue switch (AmqpType)
         {
             case NULL:
