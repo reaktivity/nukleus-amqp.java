@@ -1585,6 +1585,53 @@ public final class AmqpServerFactory implements StreamFactory
             doNetworkData(traceId, authorization, 0L, frameBuffer, 0, frameSize);
         }
 
+        private void doEncodeTransferFragments(
+            long traceId,
+            long authorization,
+            int channel,
+            long handle,
+            boolean more,
+            DirectBuffer fragmentBuffer,
+            int fragmentProgress,
+            int fragmentLimit)
+        {
+            int fragmentRemaining = fragmentLimit - fragmentProgress;
+
+            AmqpTransferFW transferCont = amqpTransferRW
+                    .wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
+                    .handle(handle)
+                    .more(1)
+                    .build();
+            int fragmentSizeCont = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - transferCont.sizeof();
+            while (fragmentRemaining > fragmentSizeCont)
+            {
+                doEncodeTransfer(traceId, authorization, outgoingChannel, transferCont,
+                        fragmentBuffer, fragmentProgress, fragmentSizeCont);
+                fragmentProgress += fragmentSizeCont;
+                fragmentRemaining -= fragmentSizeCont;
+            }
+
+            AmqpTransferFW.Builder transferFinBuilder = amqpTransferRW
+                    .wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
+                    .handle(handle);
+
+            if (more)
+            {
+                transferFinBuilder.more(1);
+            }
+
+            AmqpTransferFW transferFin = transferFinBuilder
+                    .build();
+
+            int fragmentSizeFin = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - transferFin.sizeof();
+            assert fragmentRemaining <= fragmentSizeFin;
+
+            doEncodeTransfer(traceId, authorization, channel, transferFin,
+                    fragmentBuffer, fragmentProgress, fragmentRemaining);
+            fragmentProgress += fragmentRemaining;
+            assert fragmentProgress == fragmentLimit;
+        }
+
         private void doEncodeDetach(
             long traceId,
             long authorization,
@@ -3101,46 +3148,14 @@ public final class AmqpServerFactory implements StreamFactory
 
                         int fragmentSizeInit = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - transferInit.sizeof();
                         int fragmentProgress = fragmentOffset;
-                        int fragmentRemaining = fragmentSize;
 
                         doEncodeTransfer(traceId, authorization, outgoingChannel,
                                 transferInit, fragmentBuffer, fragmentProgress, fragmentSizeInit);
                         fragmentProgress += fragmentSizeInit;
-                        fragmentRemaining -= fragmentSizeInit;
 
-                        AmqpTransferFW transferCont = amqpTransferRW
-                                .wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
-                                .handle(handle)
-                                .more(1)
-                                .build();
-                        int fragmentSizeCont = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - transferCont.sizeof();
-                        while (fragmentRemaining > fragmentSizeCont)
-                        {
-                            doEncodeTransfer(traceId, authorization, outgoingChannel, transferCont,
-                                    fragmentBuffer, fragmentProgress, fragmentSizeCont);
-                            fragmentProgress += fragmentSizeCont;
-                            fragmentRemaining -= fragmentSizeCont;
-                        }
-
-                        AmqpTransferFW.Builder transferFinBuilder = amqpTransferRW
-                                .wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
-                                .handle(handle);
-
-                        if (more)
-                        {
-                            transferFinBuilder.more(1);
-                        }
-
-                        AmqpTransferFW transferFin = transferFinBuilder
-                                .build();
-
-                        int fragmentSizeFin = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - transferFin.sizeof();
-                        assert fragmentRemaining <= fragmentSizeFin;
-
-                        doEncodeTransfer(traceId, authorization, outgoingChannel, transferFin,
-                                fragmentBuffer, fragmentProgress, fragmentRemaining);
-                        fragmentProgress += fragmentRemaining;
-                        assert fragmentProgress == fragmentLimit;
+                        doEncodeTransferFragments(
+                            traceId, authorization, outgoingChannel, handle, more,
+                            fragmentBuffer, fragmentProgress, fragmentLimit);
                     }
                 }
 
@@ -3178,42 +3193,9 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                     else
                     {
-                        AmqpTransferFW transferCont = amqpTransferRW
-                                .wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
-                                .handle(handle)
-                                .more(1)
-                                .build();
-                        int fragmentSizeCont = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - transferCont.sizeof();
-                        int fragmentProgress = fragmentOffset;
-                        int fragmentRemaining = fragmentSize;
-
-                        while (fragmentRemaining > fragmentSizeCont)
-                        {
-                            doEncodeTransfer(traceId, authorization, outgoingChannel, transferCont,
-                                    fragmentBuffer, fragmentProgress, fragmentSizeCont);
-                            fragmentProgress += fragmentSizeCont;
-                            fragmentRemaining -= fragmentSizeCont;
-                        }
-
-                        AmqpTransferFW.Builder transferFinBuilder = amqpTransferRW
-                                .wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
-                                .handle(handle);
-
-                        if (more)
-                        {
-                            transferFinBuilder.more(1);
-                        }
-
-                        AmqpTransferFW transferFin = transferFinBuilder
-                                .build();
-
-                        int fragmentSizeFin = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - transferFin.sizeof();
-                        assert fragmentRemaining <= fragmentSizeFin;
-
-                        doEncodeTransfer(traceId, authorization, outgoingChannel, transferFin,
-                                fragmentBuffer, fragmentProgress, fragmentRemaining);
-                        fragmentProgress += fragmentRemaining;
-                        assert fragmentProgress == fragmentLimit;
+                        doEncodeTransferFragments(
+                            traceId, authorization, outgoingChannel, handle, more,
+                            fragmentBuffer, fragmentOffset, fragmentLimit);
                     }
                 }
 

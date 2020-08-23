@@ -620,7 +620,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore("test stalls")
     @Test
     @Specification({
         "${route}/server/controller",
