@@ -621,7 +621,7 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpPerformativeFW performative = frameHeader.performative();
             final AmqpDescribedType descriptor = performative.kind();
             final AmqpServerDecoder decoder = decodersByPerformative.getOrDefault(descriptor, decodeUnknownType);
-            server.incomingChannel = frameHeader.channel();
+            server.decodeChannel = frameHeader.channel();
             server.decodableBodyBytes = frameHeader.size() - frameHeader.doff() * 4;
             server.decoder = decoder;
             progress = performative.offset();
@@ -735,14 +735,21 @@ public final class AmqpServerFactory implements StreamFactory
         final int limit)
     {
         final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpTransferFW transfer = performative.transfer();
-        assert transfer != null;
-        final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : NO_DELIVERY_ID;
+        assert performative.kind() == AmqpPerformativeFW.KIND_TRANSFER;
 
-        AmqpServer.AmqpSession.AmqpServerStream sender = server.sessions.get(server.incomingChannel).links.get(transfer.handle());
+        final AmqpTransferFW transfer = performative.transfer();
+        final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : NO_DELIVERY_ID;
+        final long handle = transfer.handle();
+
         int progress = offset;
         decode:
         {
+            AmqpServer.AmqpSession session = server.sessions.get(server.decodeChannel);
+            assert session != null; // TODO error if null
+
+            AmqpServer.AmqpSession.AmqpServerStream sender = session.links.get(handle);
+            assert sender != null; // TODO error if null
+
             long decodableBodyBytes = server.decodableBodyBytes - (transfer.offset() - performative.offset());
             if (!sender.fragmented)
             {
@@ -927,7 +934,7 @@ public final class AmqpServerFactory implements StreamFactory
         private long encodeSlotTraceId;
         private int encodeSlotMaxLimit = Integer.MAX_VALUE;
 
-        private int incomingChannel;
+        private int decodeChannel;
         private int outgoingChannel;
         private long decodableBodyBytes;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
@@ -1003,10 +1010,11 @@ public final class AmqpServerFactory implements StreamFactory
         private void doEncodeBegin(
             long traceId,
             long authorization,
+            int remoteChannel,
             int nextOutgoingId)
         {
             final AmqpBeginFW begin = amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
-                .remoteChannel(incomingChannel)
+                .remoteChannel(remoteChannel)
                 .nextOutgoingId(nextOutgoingId)
                 .incomingWindow(bufferPool.slotCapacity())
                 .outgoingWindow(outgoingWindow)
@@ -1798,7 +1806,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
             else
             {
-                AmqpSession session = sessions.computeIfAbsent(incomingChannel, AmqpSession::new);
+                AmqpSession session = sessions.computeIfAbsent(decodeChannel, AmqpSession::new);
                 session.outgoingChannel(outgoingChannel);
                 session.nextIncomingId((int) begin.nextOutgoingId());
                 session.incomingWindow(writeBuffer.capacity());
@@ -1815,7 +1823,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpAttachFW attach)
         {
-            AmqpSession session = sessions.get(incomingChannel);
+            AmqpSession session = sessions.get(decodeChannel);
             if (session != null)
             {
                 session.onDecodeAttach(traceId, authorization, attach);
@@ -1831,7 +1839,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpFlowFW flow)
         {
-            AmqpSession session = sessions.get(incomingChannel);
+            AmqpSession session = sessions.get(decodeChannel);
             if (session != null)
             {
                 session.onDecodeFlow(traceId, authorization, flow);
@@ -1851,7 +1859,7 @@ public final class AmqpServerFactory implements StreamFactory
             int offset,
             int limit)
         {
-            AmqpSession session = sessions.get(incomingChannel);
+            AmqpSession session = sessions.get(decodeChannel);
             if (session != null)
             {
                 session.onDecodeTransfer(traceId, authorization, transfer, deferred, buffer, offset, limit);
@@ -1872,7 +1880,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 error = detach.error().errorList().condition();
             }
-            AmqpSession session = sessions.get(incomingChannel);
+            AmqpSession session = sessions.get(decodeChannel);
             session.onDecodeDetach(traceId, authorization, error, session.outgoingChannel, detach.handle());
         }
 
@@ -1886,11 +1894,11 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 errorType = end.error().errorList().condition();
             }
-            AmqpSession session = sessions.get(incomingChannel);
+            AmqpSession session = sessions.get(decodeChannel);
             if (session != null)
             {
                 session.cleanup(traceId, authorization);
-                sessions.remove(incomingChannel);
+                sessions.remove(decodeChannel);
                 flushReplySharedBudget(traceId);
                 doEncodeEnd(traceId, authorization, session.outgoingChannel, errorType);
             }
@@ -2053,7 +2061,7 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization)
             {
-                doEncodeBegin(traceId, authorization, nextOutgoingId);
+                doEncodeBegin(traceId, authorization, incomingChannel, nextOutgoingId);
             }
 
             private void onDecodeAttach(
