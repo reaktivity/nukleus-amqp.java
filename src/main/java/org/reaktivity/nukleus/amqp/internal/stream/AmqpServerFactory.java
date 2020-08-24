@@ -604,13 +604,22 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
+        final int length = limit - offset;
+
         int progress = offset;
-        final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRO.tryWrap(buffer, offset, limit);
 
         decode:
-        if (frameHeader != null)
+        if (length != 0)
         {
-            if (frameHeader.size() > server.decodeMaxFrameSize)
+            final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRO.tryWrap(buffer, offset, limit);
+            if (frameHeader == null)
+            {
+                break decode;
+            }
+
+            final long frameSize = frameHeader.size();
+
+            if (frameSize > server.decodeMaxFrameSize)
             {
                 server.onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR);
                 server.decoder = decodeFrameType;
@@ -618,11 +627,16 @@ public final class AmqpServerFactory implements StreamFactory
                 break decode;
             }
 
+            if (length < frameSize)
+            {
+                break decode;
+            }
+
             final AmqpPerformativeFW performative = frameHeader.performative();
             final AmqpDescribedType descriptor = performative.kind();
             final AmqpServerDecoder decoder = decodersByPerformative.getOrDefault(descriptor, decodeUnknownType);
             server.decodeChannel = frameHeader.channel();
-            server.decodableBodyBytes = frameHeader.size() - frameHeader.doff() * 4;
+            server.decodableBodyBytes = frameSize - frameHeader.doff() * 4;
             server.decoder = decoder;
             progress = performative.offset();
         }
