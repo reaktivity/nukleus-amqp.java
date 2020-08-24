@@ -686,9 +686,27 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    // TODO: add transfer.to.server.with.multiple.data test
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.multiple.data/client",
+        "${server}/send.to.server.with.multiple.data/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithMultipleData() throws Exception
+    {
+        k3po.finish();
+    }
 
-    // TODO: add transfer.to.server.with.multiple.sequence test
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.multiple.sequence/client",
+        "${server}/send.to.server.with.multiple.sequence/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithMultipleSequence() throws Exception
+    {
+        k3po.finish();
+    }
 
     @Test
     @Specification({
@@ -723,9 +741,27 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    // TODO: add transfer.to.server.with.single.data test
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.single.data/client",
+        "${server}/send.to.server.with.single.data/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSingleData() throws Exception
+    {
+        k3po.finish();
+    }
 
-    // TODO: add transfer.to.server.with.single.sequence test
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.single.sequence/client",
+        "${server}/send.to.server.with.single.sequence/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSingleSequence() throws Exception
+    {
+        k3po.finish();
+    }
 
     @Test
     @Specification({
