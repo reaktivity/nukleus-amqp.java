@@ -447,6 +447,7 @@ public final class AmqpServerFactory implements StreamFactory
         long replyId,
         long traceId,
         long authorization,
+        int flags,
         long budgetId,
         int reserved,
         DirectBuffer buffer,
@@ -459,6 +460,7 @@ public final class AmqpServerFactory implements StreamFactory
             .streamId(replyId)
             .traceId(traceId)
             .authorization(authorization)
+            .flags(flags)
             .budgetId(budgetId)
             .reserved(reserved)
             .payload(buffer, index, length)
@@ -580,6 +582,7 @@ public final class AmqpServerFactory implements StreamFactory
     private interface AmqpSectionDecoder
     {
         int decode(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
             DirectBuffer buffer,
             int offset,
             int limit);
@@ -764,7 +767,7 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpServer.AmqpSession.AmqpServerStream sender = session.links.get(handle);
             assert sender != null; // TODO error if null
 
-            long decodableBodyBytes = server.decodableBodyBytes - (transfer.offset() - performative.offset());
+            server.decodableBodyBytes -= transfer.offset() - performative.offset();
             if (!sender.fragmented)
             {
                 assert deliveryId != NO_DELIVERY_ID; // TODO: error
@@ -777,52 +780,28 @@ public final class AmqpServerFactory implements StreamFactory
                 break decode;
             }
 
-            // TODO: Need to handle fragmentation blow
-            decodableBodyBytes -= transfer.sizeof();
-            int sectionOffset = transfer.limit();
-            int deferred = 0;
-            long totalPayloadSize = 0;
-            if (!sender.fragmented)
+            server.decodableBodyBytes -= transfer.sizeof();
+            final int fragmentOffset = transfer.limit();
+            final int fragmentSize = (int) server.decodableBodyBytes;
+            final int fragmentLimit = fragmentOffset + fragmentSize;
+
+            assert fragmentLimit <= limit;
+
+            int reserved = fragmentSize + sender.initialPadding;
+            boolean canSend = reserved <= sender.initialBudget;
+
+            if (canSend && sender.debitorIndex != NO_DEBITOR_INDEX)
             {
-                //                int sectionLimit = payloadOffset;
-                //                amqpSection = amqpSectionRO.wrap(buffer, sectionLimit, limit);
-                //                payloadOffset = payloadOffset(amqpSection);
-                //                totalPayloadSize = totalPayloadSize(amqpSection);
-                //                decodableBodyBytes -= sectionHeaderSize(amqpSection);
+                reserved = sender.debitor.claim(traceId, sender.debitorIndex, sender.initialId, reserved, reserved, 0);
             }
 
-            final int payloadLimit = (int) (sectionOffset + decodableBodyBytes);
-            assert payloadLimit <= limit;
+            if (canSend && reserved != 0)
+            {
+                server.onDecodeTransfer(traceId, authorization, transfer, reserved, buffer, fragmentOffset, fragmentLimit);
 
-            //            int reserved = payload.sizeof() + sender.initialPadding;
-            //            boolean canSend = reserved <= sender.initialBudget;
-            //            if (!sender.fragmented)
-            //            {
-            //                final int consumed = payload.sizeof();
-            //                deferred = consumed < totalPayloadSize ? (int) (totalPayloadSize - consumed) : 0;
-            //            }
-            //
-            //            if (canSend && sender.debitorIndex != NO_DEBITOR_INDEX)
-            //            {
-            //                reserved = sender.debitor.claim(traceId, sender.debitorIndex, sender.initialId, reserved, reserved,
-            //                0);
-            //            }
-
-            progress = limit; // TODO: need to correctly assign progress
-            server.onDecodeTransfer(traceId, authorization, transfer, deferred, buffer, sectionOffset, limit);
-
-            //            if (canSend && reserved != 0)
-            //            {
-            //                server.onDecodeTransfer(traceId, authorization, transfer, annotations, properties,
-            //                applicationProperties,
-            //                    payload, reserved, deferred);
-            //                decodableBodyBytes -= payload.sizeof();
-            //                assert decodableBodyBytes == 0;
-            //                progress = payload.limit();
-            //                sender.fragmented = transfer.hasMore() && transfer.more() == 1;
-            //            }
-
-            server.decoder = decodeFrameType;
+                server.decoder = decodeFrameType;
+                progress = fragmentLimit;
+            }
         }
 
         return progress;
@@ -1354,7 +1333,7 @@ public final class AmqpServerFactory implements StreamFactory
 
                 assert replyBudget >= 0;
 
-                doData(network, routeId, replyId, traceId, authorization, budgetId,
+                doData(network, routeId, replyId, traceId, authorization, FLAG_INIT_AND_FIN, budgetId,
                     reserved, buffer, offset, length, EMPTY_OCTETS);
             }
 
@@ -1868,7 +1847,7 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization,
             AmqpTransferFW transfer,
-            int deferred,
+            int reserved,
             DirectBuffer buffer,
             int offset,
             int limit)
@@ -1876,7 +1855,7 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpSession session = sessions.get(decodeChannel);
             if (session != null)
             {
-                session.onDecodeTransfer(traceId, authorization, transfer, deferred, buffer, offset, limit);
+                session.onDecodeTransfer(traceId, authorization, transfer, reserved, buffer, offset, limit);
             }
             else
             {
@@ -2159,7 +2138,7 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization,
                 AmqpTransferFW transfer,
-                int deferred,
+                int reserved,
                 DirectBuffer buffer,
                 int offset,
                 int limit)
@@ -2179,23 +2158,11 @@ public final class AmqpServerFactory implements StreamFactory
                     final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : 0;
                     final BoundedOctetsFW deliveryTag = transfer.hasDeliveryTag() ? transfer.deliveryTag() : null;
                     final long messageFormat = transfer.hasMessageFormat() ? transfer.messageFormat() : 0;
-                    int flags = 0;
-                    if (transfer.hasSettled() && transfer.settled() == 1)
-                    {
-                        flags = settled(flags);
-                    }
-                    if (transfer.hasResume() && transfer.resume() == 1)
-                    {
-                        flags = resume(flags);
-                    }
-                    if (transfer.hasAborted() && transfer.aborted() == 1)
-                    {
-                        flags = aborted(flags);
-                    }
-                    if (transfer.hasBatchable() && transfer.batchable() == 1)
-                    {
-                        flags = batchable(flags);
-                    }
+                    boolean settled = transfer.hasSettled() && transfer.settled() == 1;
+                    boolean resume = transfer.hasResume() && transfer.resume() == 1;
+                    boolean aborted = transfer.hasAborted() && transfer.aborted() == 1;
+                    boolean batchable = transfer.hasBatchable() && transfer.batchable() == 1;
+                    boolean more = transfer.hasMore() && transfer.more() == 1;
                     AmqpServerStream link = links.get(transfer.handle());
                     if (link.deliveryId == -1 || !transfer.hasMore() || transfer.more() == 0)
                     {
@@ -2207,8 +2174,8 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                     else
                     {
-                        link.onDecodeTransfer(traceId, authorization, deliveryId, deliveryTag, messageFormat, flags, deferred,
-                            buffer, offset, limit);
+                        link.onDecodeTransfer(traceId, authorization, reserved, deliveryId, deliveryTag, messageFormat, settled,
+                            resume, aborted, batchable, more, buffer, offset, limit);
                     }
                 }
             }
@@ -2264,6 +2231,9 @@ public final class AmqpServerFactory implements StreamFactory
                 private AmqpBodyKind encodeBodyKind;
                 private AmqpBodyKind decodeBodyKind;
 
+                private AmqpSectionDecoder decoder;
+                private int decodableBytes;
+
                 AmqpServerStream(
                     String addressFrom,
                     String addressTo,
@@ -2312,47 +2282,66 @@ public final class AmqpServerFactory implements StreamFactory
                 private void onDecodeTransfer(
                     long traceId,
                     long authorization,
+                    int reserved,
                     long deliveryId,
                     BoundedOctetsFW deliveryTag,
                     long messageFormat,
-                    int flags,
-                    int deferred,
+                    boolean settled,
+                    boolean resume,
+                    boolean aborted,
+                    boolean batchable,
+                    boolean more,
                     DirectBuffer buffer,
                     int offset,
                     int limit)
                 {
-                    Flyweight dataEx = EMPTY_OCTETS;
-                    //                    if (deferred >= 0) // TODO: fragmentation
-                    //                    {
-                    final AmqpDataExFW.Builder amqpDataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
-                        .typeId(amqpTypeId)
-                        .deferred(deferred)
-                        .deliveryId(deliveryId)
-                        .deliveryTag(b -> b.bytes(deliveryTag.get(deliveryTagRO::tryWrap)))
-                        .messageFormat(messageFormat)
-                        .flags(flags);
+                    int flags = 0;
+                    if (!fragmented)
+                    {
+                        flags |= FLAG_INIT;
+                    }
+                    if (!more)
+                    {
+                        flags |= FLAG_FIN;
+                    }
 
-                    // TODO: amqpMessageDecodeHelper.skipHeader()
-                    // TODO: amqpMessageDecodeHelper.skipDeliveryAnnotations()
+                    int transferFlags = 0;
+                    transferFlags = settled ? settled(transferFlags) : transferFlags;
+                    transferFlags = resume ? resume(transferFlags) : transferFlags;
+                    transferFlags = aborted ? aborted(transferFlags) : transferFlags;
+                    transferFlags = batchable ? batchable(transferFlags) : transferFlags;
 
-                    amqpDataEx.annotations(amqpMessageDecodeHelper.decodeAnnotations(buffer, offset, limit));
-                    amqpDataEx.properties(amqpMessageDecodeHelper.decodeProperties(buffer, amqpMessageDecodeHelper.sectionOffset,
-                        limit));
-                    amqpDataEx.applicationProperties(amqpMessageDecodeHelper.decodeApplicationProperties(buffer,
-                        amqpMessageDecodeHelper.sectionOffset, limit));
+                    if (!fragmented)
+                    {
+                        final AmqpDataExFW.Builder amqpDataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                            .typeId(amqpTypeId)
+                            .deliveryId(deliveryId)
+                            .deliveryTag(b -> b.bytes(deliveryTag.get(deliveryTagRO::tryWrap)))
+                            .messageFormat(messageFormat)
+                            .flags(transferFlags);
 
-                    final OctetsFW messageFragment = amqpMessageDecodeHelper.decodeFragmentInit(buffer,
-                        amqpMessageDecodeHelper.sectionOffset, limit);
+                        // TODO: amqpMessageDecodeHelper.skipHeader()
+                        // TODO: amqpMessageDecodeHelper.skipDeliveryAnnotations()
 
-                    // TODO: amqpMessageDecodeHelper.skipFooter()
+                        final OctetsFW messageFragment = amqpMessageDecodeHelper.decodeFragmentInit(this, buffer, offset, limit,
+                            amqpDataEx);
 
-                    int reserved = messageFragment.sizeof() + initialPadding;
-                    this.decodeBodyKind = amqpMessageDecodeHelper.bodyKind;
-                    amqpDataEx.bodyKind(b -> b.set(decodeBodyKind));
-                    dataEx = amqpDataEx.build();
-                    //                    }
+                        // TODO: amqpMessageDecodeHelper.skipFooter()
 
-                    doApplicationData(traceId, authorization, reserved, messageFragment, dataEx);
+                        Flyweight dataEx = amqpDataEx
+                            .bodyKind(b -> b.set(decodeBodyKind))
+                            .deferred(decodableBytes)
+                            .build();
+
+                        doApplicationData(traceId, authorization, flags, reserved, messageFragment, dataEx);
+                    }
+                    else
+                    {
+                        OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
+                        doApplicationData(traceId, authorization, flags, reserved, messageFragment, EMPTY_OCTETS);
+                    }
+
+                    this.fragmented = more;
                 }
 
                 private void onDecodeDetach(
@@ -2426,6 +2415,7 @@ public final class AmqpServerFactory implements StreamFactory
                 private void doApplicationData(
                     long traceId,
                     long authorization,
+                    int flags,
                     int reserved,
                     OctetsFW payload,
                     Flyweight extension)
@@ -2442,7 +2432,7 @@ public final class AmqpServerFactory implements StreamFactory
 
                     assert initialBudget >= 0;
 
-                    doData(application, newRouteId, initialId, traceId, authorization, initialBudgetId, reserved, buffer,
+                    doData(application, newRouteId, initialId, traceId, authorization, flags, initialBudgetId, reserved, buffer,
                         offset, length, extension);
                 }
 
@@ -3485,21 +3475,41 @@ public final class AmqpServerFactory implements StreamFactory
 
     private final class AmqpMessageDecoder
     {
-        private AmqpSectionDecoder sectionDecoder;
-        private AmqpBodyKind bodyKind;
-        private int sectionOffset;
+        private int decodeOffset;
 
         private OctetsFW decodeFragmentInit(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
+            DirectBuffer buffer,
+            int offset,
+            int limit,
+            AmqpDataExFW.Builder amqpDataEx)
+        {
+            stream.decodeBodyKind = null;
+
+            final Array32FW<AmqpAnnotationFW> annotations = decodeAnnotations(buffer, offset, limit);
+            amqpDataEx.annotations(annotations);
+            final AmqpPropertiesFW properties = decodeProperties(buffer, decodeOffset, limit);
+            amqpDataEx.properties(properties);
+            final Array32FW<AmqpApplicationPropertyFW> applicationProperties =
+                decodeApplicationProperties(buffer, decodeOffset, limit);
+            amqpDataEx.applicationProperties(applicationProperties);
+
+            messageFragmentRW.wrap(valueBuffer, 0, valueBuffer.capacity());
+
+            final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, decodeOffset, limit);
+            stream.decoder = lookupBodyDecoder(sectionType.get());
+
+            return decodeMessageFragment(stream, buffer, sectionType.limit(), limit);
+        }
+
+        private OctetsFW decodeFragment(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
             DirectBuffer buffer,
             int offset,
             int limit)
         {
             messageFragmentRW.wrap(valueBuffer, 0, valueBuffer.capacity());
-
-            final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, offset, limit);
-            this.sectionDecoder = lookupBodyDecoder(sectionType.get());
-
-            return decodeApplicationData(buffer, sectionType.limit(), limit);
+            return decodeMessageFragment(stream, buffer, offset, limit);
         }
 
         private AmqpSectionDecoder lookupBodyDecoder(
@@ -3524,7 +3534,8 @@ public final class AmqpServerFactory implements StreamFactory
             return decoder;
         }
 
-        private OctetsFW decodeApplicationData(
+        private OctetsFW decodeMessageFragment(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
             DirectBuffer buffer,
             int offset,
             int limit)
@@ -3532,10 +3543,10 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpSectionDecoder previous = null;
             int progress = offset;
 
-            while (progress <= limit && previous != sectionDecoder)
+            while (progress <= limit && previous != stream.decoder)
             {
-                previous = sectionDecoder;
-                progress = sectionDecoder.decode(buffer, progress, limit);
+                previous = stream.decoder;
+                progress = stream.decoder.decode(stream, buffer, progress, limit);
             }
 
             assert progress == limit;
@@ -3543,54 +3554,76 @@ public final class AmqpServerFactory implements StreamFactory
             return messageFragmentRW.build();
         }
 
-        private int decodeSectionData(
+        private int decodeSection(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
             DirectBuffer buffer,
             int offset,
             int limit)
         {
-            this.bodyKind = AmqpBodyKind.DATA;
+            int progress = offset;
+            if (progress < limit)
+            {
+                final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, progress, limit);
+                stream.decoder = lookupBodyDecoder(sectionType.get());
+                progress = sectionType.limit();
+            }
+            return progress;
+        }
+
+        private int decodeSectionData(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
+            DirectBuffer buffer,
+            int offset,
+            int limit)
+        {
+            stream.decodeBodyKind = AmqpBodyKind.DATA;
             int constructor = buffer.getByte(offset) & 0xff;
             int progress = offset;
-            int length = 0;
+            stream.decodableBytes = 0;
             messageFragmentRW.put(buffer, progress, Byte.BYTES);
             progress++;
 
             switch (constructor)
             {
             case 0xa0:
-                length = buffer.getByte(progress);
+                stream.decodableBytes = buffer.getByte(progress);
                 messageFragmentRW.put(buffer, progress, Byte.BYTES);
                 progress += Byte.BYTES;
                 break;
             case 0xb0:
-                length = buffer.getInt(progress, BIG_ENDIAN);
+                stream.decodableBytes = buffer.getInt(progress, BIG_ENDIAN);
                 messageFragmentRW.put(buffer, progress, Integer.BYTES);
                 progress += Integer.BYTES;
                 break;
             }
 
-            messageFragmentRW.put(buffer, progress, length);
-            progress += length;
-
-            if (progress < limit)
+            int available = Math.min(stream.decodableBytes, limit - progress);
+            messageFragmentRW.put(buffer, progress, available);
+            progress += available;
+            stream.decodableBytes -= available;
+            assert stream.decodableBytes >= 0;
+            if (stream.decodableBytes == 0)
             {
-                final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, progress, limit);
-                this.sectionDecoder = lookupBodyDecoder(sectionType.get());
-                progress = sectionType.limit();
+                stream.decoder = this::decodeSection;
+            }
+            else
+            {
+                stream.decoder = this::decodeSectionBytes;
             }
 
             return progress;
         }
 
         private int decodeSectionSequence(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
             DirectBuffer buffer,
             int offset,
             int limit)
         {
-            this.bodyKind = AmqpBodyKind.SEQUENCE;
+            stream.decodeBodyKind = AmqpBodyKind.SEQUENCE;
             int constructor = buffer.getByte(offset) & 0xff;
             int progress = offset;
-            int length = 0;
+            stream.decodableBytes = 0;
             messageFragmentRW.put(buffer, progress, Byte.BYTES);
             progress++;
 
@@ -3599,117 +3632,154 @@ public final class AmqpServerFactory implements StreamFactory
             case 0x45:
                 break;
             case 0xc0:
-                length = buffer.getByte(progress);
+                stream.decodableBytes = buffer.getByte(progress);
                 messageFragmentRW.put(buffer, progress, Byte.BYTES);
                 progress += Byte.BYTES;
                 break;
             case 0xd0:
-                length = buffer.getInt(progress, BIG_ENDIAN);
+                stream.decodableBytes = buffer.getInt(progress, BIG_ENDIAN);
                 messageFragmentRW.put(buffer, progress, Integer.BYTES);
                 progress += Integer.BYTES;
                 break;
             }
 
-            if (length > 0)
+            int available = Math.min(stream.decodableBytes, limit - progress);
+            messageFragmentRW.put(buffer, progress, available);
+            progress += available;
+            stream.decodableBytes -= available;
+            assert stream.decodableBytes >= 0;
+            if (stream.decodableBytes == 0)
             {
-                messageFragmentRW.put(buffer, progress, length);
+                stream.decoder = this::decodeSection;
             }
-
-            progress += length;
-
-            if (progress < limit)
+            else
             {
-                final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, progress, limit);
-                this.sectionDecoder = lookupBodyDecoder(sectionType.get());
-                progress = sectionType.limit();
+                stream.decoder = this::decodeSectionBytes;
             }
 
             return progress;
         }
 
         private int decodeSectionValue(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
             DirectBuffer buffer,
             int offset,
             int limit)
         {
             int constructor = buffer.getByte(offset) & 0xff;
-            int maskedConstructorByte = constructor & 0xf0;
+            int constructorMask = constructor & 0xf0;
             int progress = offset;
-            int length = 0;
-            this.bodyKind = AmqpBodyKind.VALUE;
-            if (maskedConstructorByte != 0xa0 && maskedConstructorByte != 0xb0)
+            stream.decodableBytes = 0;
+            stream.decodeBodyKind = AmqpBodyKind.VALUE;
+            if (constructorMask != 0xa0 && constructorMask != 0xb0)
             {
                 messageFragmentRW.put(buffer, progress, Byte.BYTES);
             }
             progress++;
 
-            switch (maskedConstructorByte)
+            switch (constructorMask)
             {
             case 0x40:
+                stream.decodableBytes = 0;
                 break;
             case 0x50:
-                length = Byte.BYTES;
+                stream.decodableBytes = Byte.BYTES;
                 break;
             case 0x60:
-                length = Short.BYTES;
+                stream.decodableBytes = Short.BYTES;
                 break;
             case 0x70:
-                length = Integer.BYTES;
+                stream.decodableBytes = Integer.BYTES;
                 break;
             case 0x80:
-                length = Long.BYTES;
+                stream.decodableBytes = Long.BYTES;
                 break;
             case 0x90:
-                length = Long.BYTES + Long.BYTES;
+                stream.decodableBytes = Long.BYTES + Long.BYTES;
                 break;
             case 0xa0:
-                length = buffer.getByte(progress);
+                stream.decodableBytes = buffer.getByte(progress);
                 switch (constructor)
                 {
                 case 0xa0:
-                    this.bodyKind = AmqpBodyKind.VALUE_BINARY8;
+                    stream.decodeBodyKind = AmqpBodyKind.VALUE_BINARY8;
                     break;
                 case 0xa1:
-                    this.bodyKind = AmqpBodyKind.VALUE_STRING8;
+                    stream.decodeBodyKind = AmqpBodyKind.VALUE_STRING8;
                     break;
                 case 0xa3:
-                    this.bodyKind = AmqpBodyKind.VALUE_SYMBOL8;
+                    stream.decodeBodyKind = AmqpBodyKind.VALUE_SYMBOL8;
                     break;
                 }
                 progress++;
                 break;
             case 0xb0:
-                length = buffer.getInt(progress, BIG_ENDIAN);
+                stream.decodableBytes = buffer.getInt(progress, BIG_ENDIAN);
                 switch (constructor)
                 {
                 case 0xb0:
-                    this.bodyKind = AmqpBodyKind.VALUE_BINARY32;
+                    stream.decodeBodyKind = AmqpBodyKind.VALUE_BINARY32;
                     break;
                 case 0xb1:
-                    this.bodyKind = AmqpBodyKind.VALUE_STRING32;
+                    stream.decodeBodyKind = AmqpBodyKind.VALUE_STRING32;
                     break;
                 case 0xb3:
-                    this.bodyKind = AmqpBodyKind.VALUE_SYMBOL32;
+                    stream.decodeBodyKind = AmqpBodyKind.VALUE_SYMBOL32;
                     break;
                 }
                 progress += Integer.BYTES;
                 break;
             case 0xc0:
             case 0xe0:
-                length = buffer.getByte(progress);
+                stream.decodableBytes = buffer.getByte(progress);
                 messageFragmentRW.put(buffer, progress, Byte.BYTES);
                 progress += Byte.BYTES;
                 break;
             case 0xd0:
             case 0xf0:
-                length = buffer.getInt(progress, BIG_ENDIAN);
+                stream.decodableBytes = buffer.getInt(progress, BIG_ENDIAN);
                 messageFragmentRW.put(buffer, progress, Integer.BYTES);
                 progress += Integer.BYTES;
                 break;
             }
-            messageFragmentRW.put(buffer, progress, length);
-            progress += length;
 
+            int available = Math.min(stream.decodableBytes, limit - progress);
+            messageFragmentRW.put(buffer, progress, available);
+            progress += available;
+            stream.decodableBytes -= available;
+            assert stream.decodableBytes >= 0;
+            if (stream.decodableBytes == 0)
+            {
+                stream.decoder = this::decodeSection;
+            }
+            else
+            {
+                stream.decoder = this::decodeSectionBytes;
+            }
+
+            return progress;
+        }
+
+        private int decodeSectionBytes(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
+            DirectBuffer buffer,
+            int offset,
+            int limit)
+        {
+            int progress = offset;
+            final int length = limit - offset;
+            if (length > 0)
+            {
+                int available = Math.min(stream.decodableBytes, limit - progress);
+                messageFragmentRW.put(buffer, progress, available);
+                progress += available;
+                stream.decodableBytes -= available;
+                assert stream.decodableBytes >= 0;
+                if (stream.decodableBytes == 0)
+                {
+                    stream.decoder = this::decodeSection;
+                }
+            }
             return progress;
         }
 
@@ -3718,7 +3788,7 @@ public final class AmqpServerFactory implements StreamFactory
             int offset,
             int limit)
         {
-            this.sectionOffset = offset;
+            this.decodeOffset = offset;
             AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = null;
             Array32FW.Builder<AmqpAnnotationFW.Builder, AmqpAnnotationFW> annotationBuilder =
                 annotationRW.wrap(frameBuffer, 0, frameBuffer.capacity());
@@ -3728,7 +3798,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 annotations = annotationsRO.tryWrap(buffer, sectionType.limit(), limit);
                 assert annotations != null;
-                this.sectionOffset = annotations.limit();
+                this.decodeOffset = annotations.limit();
 
                 annotations.forEach(kv -> vv ->
                 {
@@ -3766,7 +3836,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 AmqpMessagePropertiesFW property = amqpPropertiesRO.tryWrap(buffer, sectionType.limit(), limit);
                 assert property != null;
-                this.sectionOffset = property.limit();
+                this.decodeOffset = property.limit();
 
                 if (property.hasMessageId())
                 {
@@ -3845,7 +3915,7 @@ public final class AmqpServerFactory implements StreamFactory
                     // TODO: handle different type of values
                     applicationPropertyBuilder.item(kb -> kb.key(key).value(value));
                 });
-                this.sectionOffset = applicationProperty.limit();
+                this.decodeOffset = applicationProperty.limit();
             }
 
             return applicationPropertyBuilder.build();
