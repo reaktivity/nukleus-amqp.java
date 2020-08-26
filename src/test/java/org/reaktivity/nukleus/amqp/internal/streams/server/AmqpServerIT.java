@@ -975,6 +975,28 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.headers/client",
+        "${server}/send.to.server.with.headers/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithHeaders() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.delivery.annotations/client",
+        "${server}/send.to.server.with.delivery.annotations/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithDeliveryAnnotations() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/transfer.to.server.with.annotations/client",
         "${server}/send.to.server.with.annotations/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
@@ -990,6 +1012,17 @@ public class AmqpServerIT
         "${server}/send.to.server.with.application.properties/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.footer/client",
+        "${server}/send.to.server.with.footer/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithFooter() throws Exception
     {
         k3po.finish();
     }

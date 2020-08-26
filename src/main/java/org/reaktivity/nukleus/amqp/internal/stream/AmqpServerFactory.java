@@ -99,6 +99,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorListFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFlowFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameHeaderFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMapFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMessagePropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW;
@@ -117,7 +118,6 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpTargetFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpTargetListFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpTransferFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpType;
-import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpTypeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpULongFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpValueFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpVariableLength32FW;
@@ -189,14 +189,16 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpFrameHeaderFW amqpFrameHeaderRO = new AmqpFrameHeaderFW();
     private final AmqpPerformativeFW amqpPerformativeRO = new AmqpPerformativeFW();
     private final AmqpRouteExFW routeExRO = new AmqpRouteExFW();
-    private final AmqpDescribedTypeFW amqpDescribedTypeRO = new AmqpDescribedTypeFW();
+    private final AmqpHeaderFW headersRO = new AmqpHeaderFW();
+    private final AmqpMapFW<AmqpValueFW, AmqpValueFW> deliveryAnnotationsRO =
+        new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> annotationsRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final OctetsFW deliveryTagRO = new OctetsFW();
     private final AmqpMessagePropertiesFW amqpPropertiesRO = new AmqpMessagePropertiesFW();
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationPropertyRO =
         new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
+    private final AmqpMapFW<AmqpValueFW, AmqpValueFW> footerRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final AmqpSectionTypeFW amqpSectionTypeRO = new AmqpSectionTypeFW();
-    private final AmqpTypeFW amqpTypeRO = new AmqpTypeFW();
 
     private final AmqpProtocolHeaderFW.Builder amqpProtocolHeaderRW = new AmqpProtocolHeaderFW.Builder();
     private final AmqpFrameHeaderFW.Builder amqpFrameHeaderRW = new AmqpFrameHeaderFW.Builder();
@@ -2320,13 +2322,8 @@ public final class AmqpServerFactory implements StreamFactory
                             .messageFormat(messageFormat)
                             .flags(transferFlags);
 
-                        // TODO: amqpMessageDecodeHelper.skipHeader()
-                        // TODO: amqpMessageDecodeHelper.skipDeliveryAnnotations()
-
                         final OctetsFW messageFragment = amqpMessageDecodeHelper.decodeFragmentInit(this, buffer, offset, limit,
                             amqpDataEx);
-
-                        // TODO: amqpMessageDecodeHelper.skipFooter()
 
                         Flyweight dataEx = amqpDataEx
                             .bodyKind(b -> b.set(decodeBodyKind))
@@ -3486,7 +3483,9 @@ public final class AmqpServerFactory implements StreamFactory
         {
             stream.decodeBodyKind = null;
 
-            final Array32FW<AmqpAnnotationFW> annotations = decodeAnnotations(buffer, offset, limit);
+            skipHeaders(buffer, offset, limit);
+            skipDeliveryAnnotations(buffer, decodeOffset, limit);
+            final Array32FW<AmqpAnnotationFW> annotations = decodeAnnotations(buffer, decodeOffset, limit);
             amqpDataEx.annotations(annotations);
             final AmqpPropertiesFW properties = decodeProperties(buffer, decodeOffset, limit);
             amqpDataEx.properties(properties);
@@ -3497,7 +3496,7 @@ public final class AmqpServerFactory implements StreamFactory
             messageFragmentRW.wrap(valueBuffer, 0, valueBuffer.capacity());
 
             final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, decodeOffset, limit);
-            stream.decoder = lookupBodyDecoder(sectionType.get());
+            stream.decoder = lookupSectionDecoder(sectionType.get());
 
             return decodeMessageFragment(stream, buffer, sectionType.limit(), limit);
         }
@@ -3512,7 +3511,7 @@ public final class AmqpServerFactory implements StreamFactory
             return decodeMessageFragment(stream, buffer, offset, limit);
         }
 
-        private AmqpSectionDecoder lookupBodyDecoder(
+        private AmqpSectionDecoder lookupSectionDecoder(
             AmqpSectionType sectionType)
         {
             AmqpSectionDecoder decoder;
@@ -3526,6 +3525,9 @@ public final class AmqpServerFactory implements StreamFactory
                 break;
             case VALUE:
                 decoder = this::decodeSectionValue;
+                break;
+            case FOOTER:
+                decoder = this::skipFooter;
                 break;
             default:
                 throw new IllegalArgumentException("Unexpected section type: " + sectionType);
@@ -3564,7 +3566,7 @@ public final class AmqpServerFactory implements StreamFactory
             if (progress < limit)
             {
                 final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, progress, limit);
-                stream.decoder = lookupBodyDecoder(sectionType.get());
+                stream.decoder = lookupSectionDecoder(sectionType.get());
                 progress = sectionType.limit();
             }
             return progress;
@@ -3783,12 +3785,42 @@ public final class AmqpServerFactory implements StreamFactory
             return progress;
         }
 
-        private Array32FW<AmqpAnnotationFW> decodeAnnotations(
+        private void skipHeaders(
             DirectBuffer buffer,
             int offset,
             int limit)
         {
             this.decodeOffset = offset;
+            final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, offset, limit);
+
+            if (sectionType != null && sectionType.get() == AmqpSectionType.HEADER)
+            {
+                AmqpHeaderFW headers = headersRO.tryWrap(buffer, sectionType.limit(), limit);
+                this.decodeOffset = headers.limit();
+            }
+        }
+
+        private void skipDeliveryAnnotations(
+            DirectBuffer buffer,
+            int offset,
+            int limit)
+        {
+            final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, offset, limit);
+
+            if (sectionType != null && sectionType.get() == AmqpSectionType.DELIVERY_ANNOTATIONS)
+            {
+                AmqpMapFW<AmqpValueFW, AmqpValueFW> deliveryAnnotations =
+                    deliveryAnnotationsRO.tryWrap(buffer, sectionType.limit(), limit);
+
+                this.decodeOffset = deliveryAnnotations.limit();
+            }
+        }
+
+        private Array32FW<AmqpAnnotationFW> decodeAnnotations(
+            DirectBuffer buffer,
+            int offset,
+            int limit)
+        {
             AmqpMapFW<AmqpValueFW, AmqpValueFW> annotations = null;
             Array32FW.Builder<AmqpAnnotationFW.Builder, AmqpAnnotationFW> annotationBuilder =
                 annotationRW.wrap(frameBuffer, 0, frameBuffer.capacity());
@@ -3919,6 +3951,23 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             return applicationPropertyBuilder.build();
+        }
+
+        private int skipFooter(
+            AmqpServer.AmqpSession.AmqpServerStream stream,
+            DirectBuffer buffer,
+            int offset,
+            int limit)
+        {
+            int progress = offset;
+
+            final int length = limit - progress;
+            if (length > 0)
+            {
+                AmqpMapFW<AmqpValueFW, AmqpValueFW> footer = footerRO.tryWrap(buffer, progress, limit);
+                progress = footer.limit();
+            }
+            return progress;
         }
     }
 }
