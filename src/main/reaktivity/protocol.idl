@@ -72,6 +72,18 @@ scope protocol
             ARRAY4 (0xf0)
         }
 
+        struct AmqpVariableLength8
+        {
+            AmqpType constructor;
+            uint8 length;
+        }
+
+        struct AmqpVariableLength32
+        {
+            AmqpType constructor;
+            uint32 length;
+        }
+
         enum AmqpFrameType (uint8)
         {
             OPEN (0x10),
@@ -143,7 +155,7 @@ scope protocol
             case LONG1: int8;
         }
 
-//        TODO: will be implelemted later
+//        TODO: will be implemented later
 //        variant AmqpFloat switch (AmqpType)
 //        {
 //            case FLOAT: octets[4];
@@ -268,6 +280,19 @@ scope protocol
             SASL_CHALLENGE (0x42L),
             SASL_RESPONSE (0x43L),
             SASL_OUTCOME (0x44L)
+        }
+
+        enum AmqpSectionType (AmqpDescriptor)
+        {
+            HEADER (0x70L),
+            DELIVERY_ANNOTATIONS (0x71L),
+            MESSAGE_ANNOTATIONS (0x72L),
+            PROPERTIES (0x73L),
+            APPLICATION_PROPERTIES (0x74L),
+            DATA (0x75L),
+            SEQUENCE (0x76L),
+            VALUE (0x77L),
+            FOOTER (0x78L)
         }
 
         variant AmqpValue switch (AmqpType)
@@ -654,19 +679,28 @@ scope protocol
             AmqpPerformative performative;
         }
 
+        list AmqpHeader using AmqpList
+        {
+            AmqpBoolean durable;
+            AmqpUByte priority;
+            AmqpMilliseconds ttl;
+            AmqpBoolean firstAcquirer;
+            AmqpUInt deliveryCount;
+        }
+
 //        // 3.2 Message Format
-//        union AmqpSection switch (AmqpDescribedType)
-//        {
+        union AmqpSection switch (AmqpDescribedType)
+        {
 //            case HEADER: AmqpHeader header;
 //            case DELIVERY_ANNOTATIONS: AmqpMap deliveryAnnotations;
 //            case MESSAGE_ANNOTATIONS: AmqpMap messageAnnotations;
 //            case PROPERTIES: AmqpProperties properties;
 //            case APPLICATION_PROPERTIES: AmqpMap applicationProperties;
-//            case DATA: AmqpBinary data;
-//            case SEQUENCE: AmqpList amqpSequence;
-//            case VALUE: AmqpValue amqpValue;
+            case DATA: AmqpBinary data; // -> octets
+            case SEQUENCE: AmqpList amqpSequence; // -> octets
+            case VALUE: AmqpValue amqpValue; // -> octets
 //            case FOOTER: AmqpMap footer;
-//        }
+        }
 
         struct AmqpValueHeader
         {
@@ -675,16 +709,6 @@ scope protocol
             uint32 valueLength;
         }
 
-//
-//        list AmqpHeader (AmqpList)
-//        {
-//            AmqpBoolean durable;
-//            AmqpUByte priority;
-//            AmqpMilliseconds ttl;
-//            AmqpBoolean firstAcquirer;
-//            AmqpUInt deliveryCount;
-//        }
-//
 //        variant AmqpMessageId switch (AmqpType)
 //        {
 //            case ULONG8:
