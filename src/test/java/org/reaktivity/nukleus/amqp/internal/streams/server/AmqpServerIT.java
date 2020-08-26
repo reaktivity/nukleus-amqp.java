@@ -176,9 +176,787 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client/client",
-        "${server}/send.to.client/server" })
-    public void shouldSendToClient() throws Exception
+        "${client}/link/transfer.to.client.with.array8/client",
+        "${server}/send.to.client.with.array8/server" })
+    public void shouldSendToClientWithArray8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.array32/client",
+        "${server}/send.to.client.with.array32/server" })
+    public void shouldSendToClientWithArray32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.boolean/client",
+        "${server}/send.to.client.with.boolean/server" })
+    public void shouldSendToClientWithBoolean() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.byte/client",
+        "${server}/send.to.client.with.byte/server" })
+    public void shouldSendToClientWithByte() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.char/client",
+        "${server}/send.to.client.with.char/server" })
+    public void shouldSendToClientWithChar() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.false/client",
+        "${server}/send.to.client.with.false/server" })
+    public void shouldSendToClientWithFalse() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.int/client",
+        "${server}/send.to.client.with.int/server" })
+    public void shouldSendToClientWithInt() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.list0/client",
+        "${server}/send.to.client.with.list0/server" })
+    public void shouldSendToClientWithList0() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.list8/client",
+        "${server}/send.to.client.with.list8/server" })
+    public void shouldSendToClientWithList8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.list32/client",
+        "${server}/send.to.client.with.list32/server" })
+    public void shouldSendToClientWithList32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.long/client",
+        "${server}/send.to.client.with.long/server" })
+    public void shouldSendToClientWithLong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.map8/client",
+        "${server}/send.to.client.with.map8/server" })
+    public void shouldSendToClientWithMap8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.map32/client",
+        "${server}/send.to.client.with.map32/server" })
+    public void shouldSendToClientWithMap32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.multiple.data/client",
+        "${server}/send.to.client.with.multiple.data/server" })
+    public void shouldSendToClientWithMultipleData() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.multiple.sequence/client",
+        "${server}/send.to.client.with.multiple.sequence/server" })
+    public void shouldSendToClientWithMultipleSequence() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.null/client",
+        "${server}/send.to.client.with.null/server" })
+    public void shouldSendToClientWithNull() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.short/client",
+        "${server}/send.to.client.with.short/server" })
+    public void shouldSendToClientWithShort() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.single.data/client",
+        "${server}/send.to.client.with.single.data/server" })
+    public void shouldSendToClientWithSingleData() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.single.sequence/client",
+        "${server}/send.to.client.with.single.sequence/server" })
+    public void shouldSendToClientWithSingleSequence() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.smallint/client",
+        "${server}/send.to.client.with.smallint/server" })
+    public void shouldSendToClientWithSmallInt() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.smalllong/client",
+        "${server}/send.to.client.with.smalllong/server" })
+    public void shouldSendToClientWithSmallLong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.smalluint/client",
+        "${server}/send.to.client.with.smalluint/server" })
+    public void shouldSendToClientWithSmallUint() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.smallulong/client",
+        "${server}/send.to.client.with.smallulong/server" })
+    public void shouldSendToClientWithSmallUlong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.str8utf8/client",
+        "${server}/send.to.client.with.str8utf8/server" })
+    public void shouldSendToClientWithStr8utf8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.str32utf8/client",
+        "${server}/send.to.client.with.str32utf8/server" })
+    public void shouldSendToClientWithStr32utf8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.sym8/client",
+        "${server}/send.to.client.with.sym8/server" })
+    public void shouldSendToClientWithSym8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.sym32/client",
+        "${server}/send.to.client.with.sym32/server" })
+    public void shouldSendToClientWithSym32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.timestamp/client",
+        "${server}/send.to.client.with.timestamp/server" })
+    public void shouldSendToClientWithTimestamp() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.true/client",
+        "${server}/send.to.client.with.true/server" })
+    public void shouldSendToClientWithTrue() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.ubyte/client",
+        "${server}/send.to.client.with.ubyte/server" })
+    public void shouldSendToClientWithUbyte() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.uint/client",
+        "${server}/send.to.client.with.uint/server" })
+    public void shouldSendToClientWithUint() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.uint0/client",
+        "${server}/send.to.client.with.uint0/server" })
+    public void shouldSendToClientWithUint0() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.ulong/client",
+        "${server}/send.to.client.with.ulong/server" })
+    public void shouldSendToClientWithUlong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.ulong0/client",
+        "${server}/send.to.client.with.ulong0/server" })
+    public void shouldSendToClientWithUlong0() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.ushort/client",
+        "${server}/send.to.client.with.ushort/server" })
+    public void shouldSendToClientWithUshort() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.vbin8/client",
+        "${server}/send.to.client.with.vbin8/server" })
+    public void shouldSendToClientWithVbin8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.vbin32/client",
+        "${server}/send.to.client.with.vbin32/server" })
+    public void shouldSendToClientWithVbin32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.array8/client",
+        "${server}/send.to.server.with.array8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithArray8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.array32/client",
+        "${server}/send.to.server.with.array32/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithArray32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.boolean/client",
+        "${server}/send.to.server.with.boolean/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithBoolean() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.byte/client",
+        "${server}/send.to.server.with.byte/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithByte() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.char/client",
+        "${server}/send.to.server.with.char/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithChar() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.false/client",
+        "${server}/send.to.server.with.false/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithFalse() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.int/client",
+        "${server}/send.to.server.with.int/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithInt() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.list0/client",
+        "${server}/send.to.server.with.list0/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithList0() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.list8/client",
+        "${server}/send.to.server.with.list8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithlist8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.list32/client",
+        "${server}/send.to.server.with.list32/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithList32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.long/client",
+        "${server}/send.to.server.with.long/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithLong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.map8/client",
+        "${server}/send.to.server.with.map8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithMap8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.map32/client",
+        "${server}/send.to.server.with.map32/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithMap32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.multiple.data/client",
+        "${server}/send.to.server.with.multiple.data/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithMultipleData() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.multiple.sequence/client",
+        "${server}/send.to.server.with.multiple.sequence/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithMultipleSequence() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.null/client",
+        "${server}/send.to.server.with.null/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithNull() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.properties/client",
+        "${server}/send.to.server.with.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.short/client",
+        "${server}/send.to.server.with.short/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithShort() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.single.data/client",
+        "${server}/send.to.server.with.single.data/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSingleData() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.single.sequence/client",
+        "${server}/send.to.server.with.single.sequence/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSingleSequence() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.smallint/client",
+        "${server}/send.to.server.with.smallint/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSmallInt() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.smalllong/client",
+        "${server}/send.to.server.with.smalllong/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSmallLong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.smalluint/client",
+        "${server}/send.to.server.with.smalluint/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSmallUint() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.smallulong/client",
+        "${server}/send.to.server.with.smallulong/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSmallUlong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.str8utf8/client",
+        "${server}/send.to.server.with.str8utf8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithStr8utf8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.str32utf8/client",
+        "${server}/send.to.server.with.str32utf8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithStr32utf8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.sym8/client",
+        "${server}/send.to.server.with.sym8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSym8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.sym32/client",
+        "${server}/send.to.server.with.sym32/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithSym32() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.timestamp/client",
+        "${server}/send.to.server.with.timestamp/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithTimestamp() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.true/client",
+        "${server}/send.to.server.with.true/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithTrue() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.ubyte/client",
+        "${server}/send.to.server.with.ubyte/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithUbyte() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.uint/client",
+        "${server}/send.to.server.with.uint/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithUint() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.uint0/client",
+        "${server}/send.to.server.with.uint0/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithUint0() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.ulong/client",
+        "${server}/send.to.server.with.ulong/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithUlong() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.ulong0/client",
+        "${server}/send.to.server.with.ulong0/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithUlong0() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.ushort/client",
+        "${server}/send.to.server.with.ushort/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithUshort() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.vbin8/client",
+        "${server}/send.to.server.with.vbin8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithVbin8() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.vbin32/client",
+        "${server}/send.to.server.with.vbin32/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithVbin32() throws Exception
     {
         k3po.finish();
     }
@@ -197,10 +975,21 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server/client",
-        "${server}/send.to.server/server" })
+        "${client}/link/transfer.to.server.with.headers/client",
+        "${server}/send.to.server.with.headers/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServer() throws Exception
+    public void shouldSendToServerWithHeaders() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.delivery.annotations/client",
+        "${server}/send.to.server.with.delivery.annotations/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithDeliveryAnnotations() throws Exception
     {
         k3po.finish();
     }
@@ -230,10 +1019,10 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.with.properties/client",
-        "${server}/send.to.server.with.properties/server" })
+        "${client}/link/transfer.to.server.with.footer/client",
+        "${server}/send.to.server.with.footer/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServerWithProperties() throws Exception
+    public void shouldSendToServerWithFooter() throws Exception
     {
         k3po.finish();
     }
