@@ -2266,7 +2266,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final AmqpSenderSettleMode amqpSenderSettleMode = attach.sndSettleMode();
                     final AmqpReceiverSettleMode amqpReceiverSettleMode = attach.rcvSettleMode();
 
-                    remoteDeliveryCount = attach.initialDeliveryCount();
+                    remoteDeliveryCount = attach.hasInitialDeliveryCount() ? attach.initialDeliveryCount() : 0;
 
                     doApplicationBeginIfNecessary(traceId, authorization, affinity, capability, amqpSenderSettleMode,
                         amqpReceiverSettleMode);
