@@ -1480,16 +1480,6 @@ public final class AmqpServerFactory implements StreamFactory
             }
         }
 
-        private void releaseBufferSlotIfNecessary()
-        {
-            if (decodeSlot != NO_SLOT)
-            {
-                bufferPool.release(decodeSlot);
-                decodeSlot = NO_SLOT;
-                decodeSlotOffset = 0;
-            }
-        }
-
         private void onNetworkEnd(
             EndFW end)
         {
