@@ -1062,7 +1062,8 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpSenderSettleMode senderSettleMode,
             AmqpReceiverSettleMode receiverSettleMode,
             StringFW addressFrom,
-            StringFW addressTo)
+            StringFW addressTo,
+            long deliveryCount)
         {
             AmqpAttachFW.Builder builder = amqpAttachRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
                 .name(amqpStringRW.wrap(stringBuffer, 0, stringBuffer.capacity()).set(name, UTF_8).build().get())
@@ -1102,7 +1103,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             if (role == AmqpRole.SENDER)
             {
-                builder.initialDeliveryCount(initialDeliveryCount);
+                builder.initialDeliveryCount(deliveryCount);
             }
 
             final AmqpAttachFW attach = builder.build();
@@ -2237,6 +2238,7 @@ public final class AmqpServerFactory implements StreamFactory
 
                 private boolean fragmented;
                 private long deliveryId = NO_DELIVERY_ID;
+                private long remoteDeliveryCount;
                 private long deliveryCount;
                 private int linkCredit;
 
@@ -2289,6 +2291,8 @@ public final class AmqpServerFactory implements StreamFactory
                     final AmqpSenderSettleMode amqpSenderSettleMode = attach.sndSettleMode();
                     final AmqpReceiverSettleMode amqpReceiverSettleMode = attach.rcvSettleMode();
 
+                    remoteDeliveryCount = attach.hasInitialDeliveryCount() ? attach.initialDeliveryCount() : 0;
+
                     doApplicationBeginIfNecessary(traceId, authorization, affinity, capability, amqpSenderSettleMode,
                         amqpReceiverSettleMode);
 
@@ -2301,8 +2305,8 @@ public final class AmqpServerFactory implements StreamFactory
                     long deliveryCount,
                     int linkCredit)
                 {
-                    this.linkCredit = (int) (deliveryCount + linkCredit - this.deliveryCount);
-                    this.deliveryCount = deliveryCount;
+                    this.linkCredit = (int) (deliveryCount + linkCredit - this.remoteDeliveryCount);
+                    this.remoteDeliveryCount = deliveryCount;
                     flushReplyWindow(traceId, authorization);
                 }
 
@@ -2330,6 +2334,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!more)
                     {
                         flags |= FLAG_FIN;
+                        deliveryCount++;
                     }
 
                     int transferFlags = 0;
@@ -2556,21 +2561,28 @@ public final class AmqpServerFactory implements StreamFactory
                         debitorIndex = debitor.acquire(budgetId, initialId, AmqpServer.this::decodeNetworkIfNecessary);
                     }
 
-                    if (isReplyOpen())
+                    flushInitialWindow(traceId, authorization);
+
+                    if (AmqpState.initialClosing(state) && !AmqpState.initialClosed(state))
+                    {
+                        doApplicationEnd(traceId, authorization, EMPTY_OCTETS);
+                    }
+                }
+
+                private void flushInitialWindow(
+                    long traceId,
+                    long authorization)
+                {
+                    if (AmqpState.replyOpened(state) && role == SENDER)
                     {
                         this.linkCredit = (int) (Math.min(bufferPool.slotCapacity(), initialBudget) /
-                            Math.min(bufferPool.slotCapacity(), decodeMaxFrameSize));
+                                                 Math.min(bufferPool.slotCapacity(), decodeMaxFrameSize));
                         maximum.value = 0;
                         links.values().forEach(l -> maximum.value += l.linkCredit);
                         incomingWindow = maximum.value;
 
                         doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
                             handle, deliveryCount, linkCredit);
-                    }
-
-                    if (AmqpState.initialClosing(state) && !AmqpState.initialClosed(state))
-                    {
-                        doApplicationEnd(traceId, authorization, EMPTY_OCTETS);
                     }
                 }
 
@@ -2591,11 +2603,6 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     final long signalId = signal.signalId();
                     // TODO
-                }
-
-                private boolean isReplyOpen()
-                {
-                    return AmqpState.replyOpened(state);
                 }
 
                 private void onApplicationBegin(
@@ -2619,19 +2626,9 @@ public final class AmqpServerFactory implements StreamFactory
                     }
 
                     doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, amqpSenderSettleMode,
-                        amqpReceiverSettleMode, addressFrom, addressTo);
+                        amqpReceiverSettleMode, addressFrom, addressTo, deliveryCount);
 
-                    if (role == SENDER)
-                    {
-                        this.linkCredit = (int) (Math.min(bufferPool.slotCapacity(), initialBudget) /
-                            Math.min(bufferPool.slotCapacity(), decodeMaxFrameSize));
-                        maximum.value = 0;
-                        links.values().forEach(l -> maximum.value += l.linkCredit);
-                        incomingWindow = maximum.value;
-
-                        doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
-                            handle, deliveryCount, linkCredit);
-                    }
+                    flushInitialWindow(traceId, authorization);
                 }
 
                 private void onApplicationData(
@@ -2655,11 +2652,6 @@ public final class AmqpServerFactory implements StreamFactory
 
                     nextOutgoingId++;
                     outgoingWindow--;
-                    if ((flags & FLAG_FIN) == 1)
-                    {
-                        deliveryCount++;
-                        linkCredit--;
-                    }
 
                     if ((flags & FLAG_INIT) == FLAG_INIT)
                     {
@@ -2825,7 +2817,7 @@ public final class AmqpServerFactory implements StreamFactory
                     long traceId,
                     long authorization)
                 {
-                    if (isReplyOpen())
+                    if (AmqpState.replyOpened(state))
                     {
                         final int maxFrameSize = (int) encodeMaxFrameSize;
                         final int slotCapacity = bufferPool.slotCapacity();
