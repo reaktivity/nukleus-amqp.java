@@ -52,6 +52,10 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettl
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole.RECEIVER;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole.SENDER;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSenderSettleMode.MIXED;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpType.BINARY1;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpType.BINARY4;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpType.STRING1;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpType.STRING4;
 import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpCapabilities;
 import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpReceiverSettleMode;
 import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpSenderSettleMode;
@@ -62,6 +66,8 @@ import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
@@ -89,7 +95,6 @@ import org.reaktivity.nukleus.amqp.internal.types.StringFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpAttachFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBinaryFW;
-import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpByteFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpCloseFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedTypeFW;
@@ -199,6 +204,7 @@ public final class AmqpServerFactory implements StreamFactory
         new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> footerRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final AmqpSectionTypeFW amqpSectionTypeRO = new AmqpSectionTypeFW();
+    private final AmqpValueFW amqpValueRO = new AmqpValueFW();
 
     private final AmqpProtocolHeaderFW.Builder amqpProtocolHeaderRW = new AmqpProtocolHeaderFW.Builder();
     private final AmqpFrameHeaderFW.Builder amqpFrameHeaderRW = new AmqpFrameHeaderFW.Builder();
@@ -217,7 +223,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpSourceListFW.Builder amqpSourceListRW = new AmqpSourceListFW.Builder();
     private final AmqpTargetListFW.Builder amqpTargetListRW = new AmqpTargetListFW.Builder();
     private final AmqpBinaryFW.Builder amqpBinaryRW = new AmqpBinaryFW.Builder();
-    private final AmqpByteFW.Builder amqpByteRW = new AmqpByteFW.Builder();
     private final AmqpULongFW.Builder amqpULongRW = new AmqpULongFW.Builder();
     private final AmqpVariableLength8FW.Builder amqpVariableLength8RW = new AmqpVariableLength8FW.Builder();
     private final AmqpVariableLength32FW.Builder amqpVariableLength32RW = new AmqpVariableLength32FW.Builder();
@@ -305,6 +310,26 @@ public final class AmqpServerFactory implements StreamFactory
         decodersByPerformative.put(END, decodeEnd);
         decodersByPerformative.put(CLOSE, decodeClose);
         this.decodersByPerformative = decodersByPerformative;
+    }
+
+    private final Map<AmqpType, Function<AmqpValueFW, Flyweight>> valuesByAmqpType;
+    {
+        final Map<AmqpType, Function<AmqpValueFW, Flyweight>> valuesByAmqpType = new EnumMap<>(AmqpType.class);
+        valuesByAmqpType.put(STRING1, AmqpValueFW::getAsAmqpString);
+        valuesByAmqpType.put(STRING4, AmqpValueFW::getAsAmqpString);
+        valuesByAmqpType.put(BINARY1, AmqpValueFW::getAsAmqpBinary);
+        valuesByAmqpType.put(BINARY4, AmqpValueFW::getAsAmqpBinary);
+        this.valuesByAmqpType = valuesByAmqpType;
+    }
+
+    private final Map<AmqpType, BiConsumer<AmqpValueFW.Builder, AmqpValueFW>> valueSettersByAmqpType;
+    {
+        final Map<AmqpType, BiConsumer<AmqpValueFW.Builder, AmqpValueFW>> valueSettersByAmqpType = new EnumMap<>(AmqpType.class);
+        valueSettersByAmqpType.put(STRING1, (b, v) -> b.setAsAmqpString(v.getAsAmqpString()));
+        valueSettersByAmqpType.put(STRING4, (b, v) -> b.setAsAmqpString(v.getAsAmqpString()));
+        valueSettersByAmqpType.put(BINARY1, (b, v) -> b.setAsAmqpBinary(v.getAsAmqpBinary()));
+        valueSettersByAmqpType.put(BINARY4, (b, v) -> b.setAsAmqpBinary(v.getAsAmqpBinary()));
+        this.valueSettersByAmqpType = valueSettersByAmqpType;
     }
 
     public AmqpServerFactory(
@@ -3097,19 +3122,21 @@ public final class AmqpServerFactory implements StreamFactory
                 AmqpULongFW id = amqpULongRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
                     .set(item.key().id()).build();
                 valueOffset += id.sizeof();
-                AmqpByteFW value1 = amqpByteRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
-                    .set(item.value().bytes().value().getByte(0)).build();
+                OctetsFW valueBytes1 = item.value().bytes();
+                AmqpValueFW value1 = amqpValueRO.wrap(valueBytes1.buffer(), valueBytes1.offset(), valueBytes1.limit());
                 valueOffset += value1.sizeof();
-                annotationsRW.entry(k -> k.setAsAmqpULong(id), v -> v.setAsAmqpByte(value1));
+                annotationsRW.entry(k -> k.setAsAmqpULong(id),
+                    v -> valueSettersByAmqpType.get(value1.kind()).accept(v, value1));
                 break;
             case KIND_NAME:
                 AmqpSymbolFW name = amqpSymbolRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
                     .set(item.key().name()).build();
                 valueOffset += name.sizeof();
-                AmqpByteFW value2 = amqpByteRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
-                    .set(item.value().bytes().value().getByte(0)).build();
+                OctetsFW valueBytes2 = item.value().bytes();
+                AmqpValueFW value2 = amqpValueRO.wrap(valueBytes2.buffer(), valueBytes2.offset(), valueBytes2.limit());
                 valueOffset += value2.sizeof();
-                annotationsRW.entry(k -> k.setAsAmqpSymbol(name), v -> v.setAsAmqpByte(value2));
+                annotationsRW.entry(k -> k.setAsAmqpSymbol(name),
+                    v -> valueSettersByAmqpType.get(value2.kind()).accept(v, value2));
                 break;
             }
         }
@@ -3318,7 +3345,7 @@ public final class AmqpServerFactory implements StreamFactory
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength8FW bodyHeader =
                 amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
-                    .constructor(c -> c.set(AmqpType.STRING1))
+                    .constructor(c -> c.set(STRING1))
                     .length(length)
                     .build();
             int bodyHeaderSize = bodyHeader.sizeof();
@@ -3342,7 +3369,7 @@ public final class AmqpServerFactory implements StreamFactory
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength32FW bodyHeader =
                 amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
-                    .constructor(c -> c.set(AmqpType.STRING4))
+                    .constructor(c -> c.set(STRING4))
                     .length(length)
                     .build();
             int bodyHeaderSize = bodyHeader.sizeof();
@@ -3366,7 +3393,7 @@ public final class AmqpServerFactory implements StreamFactory
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength8FW bodyHeader =
                 amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
-                    .constructor(c -> c.set(AmqpType.BINARY1))
+                    .constructor(c -> c.set(BINARY1))
                     .length(length)
                     .build();
             int bodyHeaderSize = bodyHeader.sizeof();
@@ -3390,7 +3417,7 @@ public final class AmqpServerFactory implements StreamFactory
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength32FW bodyHeader =
                 amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
-                .constructor(c -> c.set(AmqpType.BINARY4))
+                .constructor(c -> c.set(BINARY4))
                 .length(length)
                 .build();
             int bodyHeaderSize = bodyHeader.sizeof();
@@ -3826,20 +3853,21 @@ public final class AmqpServerFactory implements StreamFactory
 
                 annotations.forEach(kv -> vv ->
                 {
-                    BoundedOctetsFW value = vv.getAsAmqpBinary().get();
+                    Function<AmqpValueFW, Flyweight> function = valuesByAmqpType.get(vv.kind());
+                    Flyweight value = function.apply(vv);
                     switch (kv.kind())
                     {
                     case SYMBOL1:
                         StringFW symbolKey = kv.getAsAmqpSymbol().get();
                         annotationBuilder.item(b -> b.key(k -> k.name(symbolKey))
-                            .value(vb -> vb.bytes(value.value(), 0, value.length())));
+                                                     .value(vb -> vb.bytes(value.buffer(), value.offset(), value.sizeof())));
                         break;
                     case ULONG0:
                     case ULONG1:
                     case ULONG8:
                         long longKey = kv.getAsAmqpULong().get();
                         annotationBuilder.item(b -> b.key(k -> k.id(longKey))
-                            .value(vb -> vb.bytes(value.value(), 0, value.length())));
+                                                     .value(vb -> vb.bytes(value.buffer(), value.offset(), value.sizeof())));
                         break;
                     }
                 });
