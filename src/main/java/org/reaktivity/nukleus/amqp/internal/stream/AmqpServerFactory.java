@@ -156,7 +156,6 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int FLAG_INIT_AND_FIN = 3;
     private static final int FRAME_HEADER_SIZE = 11;
     private static final int MIN_MAX_FRAME_SIZE = 512;
-    private static final int DESCRIBED_TYPE_SIZE = 3;
     private static final int TRANSFER_HEADER_SIZE = 20;
     private static final int PAYLOAD_HEADER_SIZE = 205;
     private static final int NO_DELIVERY_ID = -1;
@@ -795,17 +794,6 @@ public final class AmqpServerFactory implements StreamFactory
             assert sender != null; // TODO error if null
 
             server.decodableBodyBytes -= transfer.offset() - performative.offset();
-            if (!sender.fragmented)
-            {
-                assert deliveryId != NO_DELIVERY_ID; // TODO: error
-                assert deliveryId == sender.deliveryId + 1; // TODO: error
-                sender.deliveryId = deliveryId;
-            }
-
-            if (deliveryId != NO_DELIVERY_ID && deliveryId != sender.deliveryId) // TODO: error
-            {
-                break decode;
-            }
 
             server.decodableBodyBytes -= transfer.sizeof();
             final int fragmentOffset = transfer.limit();
@@ -2025,6 +2013,7 @@ public final class AmqpServerFactory implements StreamFactory
             private final Long2ObjectHashMap<AmqpServerStream> links;
             private final int incomingChannel;
 
+            private long deliveryId = NO_DELIVERY_ID;
             private int outgoingChannel;
             private int nextIncomingId;
             private int incomingWindow;
@@ -2182,7 +2171,6 @@ public final class AmqpServerFactory implements StreamFactory
                 }
                 else
                 {
-                    final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : 0;
                     final BoundedOctetsFW deliveryTag = transfer.hasDeliveryTag() ? transfer.deliveryTag() : null;
                     final long messageFormat = transfer.hasMessageFormat() ? transfer.messageFormat() : 0;
                     boolean settled = transfer.hasSettled() && transfer.settled() == 1;
@@ -2191,19 +2179,8 @@ public final class AmqpServerFactory implements StreamFactory
                     boolean batchable = transfer.hasBatchable() && transfer.batchable() == 1;
                     boolean more = transfer.hasMore() && transfer.more() == 1;
                     AmqpServerStream link = links.get(transfer.handle());
-                    if (link.deliveryId == -1 || !transfer.hasMore() || transfer.more() == 0)
-                    {
-                        link.linkCredit--;
-                    }
-                    if (link.linkCredit < 0)
-                    {
-                        link.onDecodeError(traceId, authorization, LINK_TRANSFER_LIMIT_EXCEEDED);
-                    }
-                    else
-                    {
-                        link.onDecodeTransfer(traceId, authorization, reserved, deliveryId, deliveryTag, messageFormat, settled,
-                            resume, aborted, batchable, more, buffer, offset, limit);
-                    }
+                    link.onDecodeTransfer(traceId, authorization, reserved, deliveryTag, messageFormat, settled,
+                        resume, aborted, batchable, more, buffer, offset, limit);
                 }
             }
 
@@ -2236,7 +2213,6 @@ public final class AmqpServerFactory implements StreamFactory
                 private int capabilities;
 
                 private boolean fragmented;
-                private long deliveryId = NO_DELIVERY_ID;
                 private long deliveryCount;
                 private int linkCredit;
 
@@ -2310,7 +2286,6 @@ public final class AmqpServerFactory implements StreamFactory
                     long traceId,
                     long authorization,
                     int reserved,
-                    long deliveryId,
                     BoundedOctetsFW deliveryTag,
                     long messageFormat,
                     boolean settled,
@@ -2338,11 +2313,18 @@ public final class AmqpServerFactory implements StreamFactory
                     transferFlags = aborted ? aborted(transferFlags) : transferFlags;
                     transferFlags = batchable ? batchable(transferFlags) : transferFlags;
 
+                    decode:
                     if (!fragmented)
                     {
+                        this.linkCredit--;
+                        if (linkCredit < 0)
+                        {
+                            onDecodeError(traceId, authorization, LINK_TRANSFER_LIMIT_EXCEEDED);
+                            break decode;
+                        }
+
                         final AmqpDataExFW.Builder amqpDataEx = amqpDataExRW.wrap(extraBuffer, 0, extraBuffer.capacity())
                             .typeId(amqpTypeId)
-                            .deliveryId(deliveryId)
                             .deliveryTag(b -> b.bytes(deliveryTag.get(deliveryTagRO::tryWrap)))
                             .messageFormat(messageFormat)
                             .flags(transferFlags);
@@ -2682,11 +2664,11 @@ public final class AmqpServerFactory implements StreamFactory
                     final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
                     assert dataEx != null;
 
+                    deliveryId++;
                     final int deferred = dataEx.deferred();
                     final boolean more = (flags & FLAG_FIN) == 0;
 
                     final AmqpBodyKind bodyKind = dataEx.bodyKind().get();
-                    final long deliveryId = dataEx.deliveryId();
                     final OctetsFW deliveryTagBytes = dataEx.deliveryTag().bytes();
                     final BoundedOctetsFW deliveryTag =
                             amqpBinaryRW.wrap(stringBuffer, 0, stringBuffer.capacity())
