@@ -185,7 +185,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpBeginExFW.Builder amqpBeginExRW = new AmqpBeginExFW.Builder();
     private final AmqpDataExFW.Builder amqpDataExRW = new AmqpDataExFW.Builder();
 
-    private final OctetsFW payloadRO = new OctetsFW();
     private final OctetsFW.Builder payloadRW = new OctetsFW.Builder();
     private final OctetsFW.Builder messageFragmentRW = new OctetsFW.Builder();
 
@@ -935,7 +934,6 @@ public final class AmqpServerFactory implements StreamFactory
         private final Int2ObjectHashMap<AmqpSession> sessions;
 
         private int initialBudget;
-        private int initialPadding;
         private int replyBudget;
         private int replyPadding;
 
@@ -2217,6 +2215,7 @@ public final class AmqpServerFactory implements StreamFactory
                 private boolean fragmented;
                 private long remoteDeliveryCount;
                 private long deliveryCount;
+                private int remoteLinkCredit;
                 private int linkCredit;
 
                 private BudgetDebitor debitor;
@@ -2282,7 +2281,7 @@ public final class AmqpServerFactory implements StreamFactory
                     long deliveryCount,
                     int linkCredit)
                 {
-                    this.linkCredit = (int) (deliveryCount + linkCredit - this.remoteDeliveryCount);
+                    this.linkCredit = (int) (deliveryCount + linkCredit - remoteDeliveryCount);
                     this.remoteDeliveryCount = deliveryCount;
                     flushReplyWindow(traceId, authorization);
                 }
@@ -2322,8 +2321,8 @@ public final class AmqpServerFactory implements StreamFactory
                     decode:
                     if (!fragmented)
                     {
-                        this.linkCredit--;
-                        if (linkCredit < 0)
+                        this.remoteLinkCredit--;
+                        if (remoteLinkCredit < 0)
                         {
                             onDecodeError(traceId, authorization, LINK_TRANSFER_LIMIT_EXCEEDED);
                             break decode;
@@ -2558,14 +2557,14 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     if (AmqpState.replyOpened(state) && role == SENDER)
                     {
-                        this.linkCredit = (int) (Math.min(bufferPool.slotCapacity(), initialBudget) /
-                                                 Math.min(bufferPool.slotCapacity(), decodeMaxFrameSize));
+                        this.remoteLinkCredit = (int) (Math.min(bufferPool.slotCapacity(), initialBudget) /
+                                                       Math.min(bufferPool.slotCapacity(), decodeMaxFrameSize));
                         maximum.value = 0;
-                        links.values().forEach(l -> maximum.value += l.linkCredit);
+                        links.values().forEach(l -> maximum.value += l.remoteLinkCredit);
                         incomingWindow = maximum.value;
 
                         doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
-                            handle, deliveryCount, linkCredit);
+                            handle, deliveryCount, remoteLinkCredit);
                     }
                 }
 
