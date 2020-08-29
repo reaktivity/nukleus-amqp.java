@@ -794,7 +794,17 @@ public final class AmqpServerFactory implements StreamFactory
             assert sender != null; // TODO error if null
 
             server.decodableBodyBytes -= transfer.offset() - performative.offset();
+            if (!sender.fragmented)
+            {
+                assert deliveryId != NO_DELIVERY_ID; // TODO: error
+                assert deliveryId == session.remoteDeliveryId + 1; // TODO: error
+                session.remoteDeliveryId = deliveryId;
+            }
 
+            if (deliveryId != NO_DELIVERY_ID && deliveryId != session.remoteDeliveryId) // TODO: error
+            {
+                break decode;
+            }
             server.decodableBodyBytes -= transfer.sizeof();
             final int fragmentOffset = transfer.limit();
             final int fragmentSize = (int) server.decodableBodyBytes;
@@ -2015,6 +2025,7 @@ public final class AmqpServerFactory implements StreamFactory
             private final int incomingChannel;
 
             private long deliveryId = NO_DELIVERY_ID;
+            private long remoteDeliveryId = NO_DELIVERY_ID;
             private int outgoingChannel;
             private int nextIncomingId;
             private int incomingWindow;
@@ -2637,6 +2648,7 @@ public final class AmqpServerFactory implements StreamFactory
 
                     if ((flags & FLAG_INIT) == FLAG_INIT)
                     {
+                        deliveryId++;
                         onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
                     }
                     else
@@ -2656,7 +2668,6 @@ public final class AmqpServerFactory implements StreamFactory
                     final AmqpDataExFW dataEx = extension.get(amqpDataExRO::tryWrap);
                     assert dataEx != null;
 
-                    deliveryId++;
                     final int deferred = dataEx.deferred();
                     final boolean more = (flags & FLAG_FIN) == 0;
 
