@@ -2881,8 +2881,6 @@ public final class AmqpServerFactory implements StreamFactory
             applicationPropertiesRW = new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
             new AmqpValueFW.Builder());
 
-        private int valueOffset;
-
         private AmqpSectionEncoder sectionEncoder;
         private int encodableBytes;
 
@@ -3101,22 +3099,18 @@ public final class AmqpServerFactory implements StreamFactory
             switch (item.key().kind())
             {
             case KIND_ID:
-                AmqpULongFW id = amqpULongRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
+                AmqpULongFW id = amqpULongRW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .set(item.key().id()).build();
-                valueOffset += id.sizeof();
                 OctetsFW valueBytes1 = item.value().bytes();
                 AmqpValueFW value1 = amqpValueRO.wrap(valueBytes1.buffer(), valueBytes1.offset(), valueBytes1.limit());
-                valueOffset += value1.sizeof();
                 annotationsRW.entry(k -> k.setAsAmqpULong(id),
                     v -> valueSettersByAmqpType.get(value1.kind()).accept(v, value1));
                 break;
             case KIND_NAME:
-                AmqpSymbolFW name = amqpSymbolRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
+                AmqpSymbolFW name = amqpSymbolRW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .set(item.key().name()).build();
-                valueOffset += name.sizeof();
                 OctetsFW valueBytes2 = item.value().bytes();
                 AmqpValueFW value2 = amqpValueRO.wrap(valueBytes2.buffer(), valueBytes2.offset(), valueBytes2.limit());
-                valueOffset += value2.sizeof();
                 annotationsRW.entry(k -> k.setAsAmqpSymbol(name),
                     v -> valueSettersByAmqpType.get(value2.kind()).accept(v, value2));
                 break;
@@ -3142,6 +3136,7 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeApplicationProperty(
             AmqpApplicationPropertyFW item)
         {
+            int  valueOffset = 0;
             AmqpStringFW key = amqpStringRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
                 .set(item.key())
                 .build();
@@ -3150,7 +3145,6 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpStringFW value = amqpValueRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
                 .set(item.value())
                 .build();
-            valueOffset += value.sizeof();
 
             applicationPropertiesRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
         }
