@@ -261,7 +261,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final RouteManager router;
     private final MutableDirectBuffer writeBuffer;
     private final MutableDirectBuffer frameBuffer;
-    private final MutableDirectBuffer tempBuffer;
     private final MutableDirectBuffer extraBuffer;
     private final MutableDirectBuffer valueBuffer;
     private final MutableDirectBuffer stringBuffer;
@@ -350,7 +349,6 @@ public final class AmqpServerFactory implements StreamFactory
         this.extraBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.stringBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.valueBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
-        this.tempBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.bufferPool = bufferPool;
         this.creditor = creditor;
         this.supplyDebitor = supplyDebitor;
