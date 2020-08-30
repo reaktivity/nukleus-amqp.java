@@ -3147,7 +3147,6 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpStringFW value = amqpValueRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
                 .set(item.value())
                 .build();
-            valueOffset += value.sizeof();
 
             applicationPropertiesRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
         }
