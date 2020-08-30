@@ -2881,8 +2881,6 @@ public final class AmqpServerFactory implements StreamFactory
             applicationPropertiesRW = new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
             new AmqpValueFW.Builder());
 
-        private int valueOffset;
-
         private AmqpSectionEncoder sectionEncoder;
         private int encodableBytes;
 
@@ -3098,6 +3096,7 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeMessageAnnotation(
             AmqpAnnotationFW item)
         {
+            int  valueOffset = 0;
             switch (item.key().kind())
             {
             case KIND_ID:
@@ -3142,6 +3141,7 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeApplicationProperty(
             AmqpApplicationPropertyFW item)
         {
+            int  valueOffset = 0;
             AmqpStringFW key = amqpStringRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
                 .set(item.key())
                 .build();
