@@ -261,6 +261,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final RouteManager router;
     private final MutableDirectBuffer writeBuffer;
     private final MutableDirectBuffer frameBuffer;
+    private final MutableDirectBuffer tempBuffer;
     private final MutableDirectBuffer extraBuffer;
     private final MutableDirectBuffer valueBuffer;
     private final MutableDirectBuffer stringBuffer;
@@ -349,6 +350,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.extraBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.stringBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.valueBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
+        this.tempBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.bufferPool = bufferPool;
         this.creditor = creditor;
         this.supplyDebitor = supplyDebitor;
@@ -3096,26 +3098,21 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeMessageAnnotation(
             AmqpAnnotationFW item)
         {
-            int  valueOffset = 0;
             switch (item.key().kind())
             {
             case KIND_ID:
-                AmqpULongFW id = amqpULongRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
+                AmqpULongFW id = amqpULongRW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .set(item.key().id()).build();
-                valueOffset += id.sizeof();
                 OctetsFW valueBytes1 = item.value().bytes();
                 AmqpValueFW value1 = amqpValueRO.wrap(valueBytes1.buffer(), valueBytes1.offset(), valueBytes1.limit());
-                valueOffset += value1.sizeof();
                 annotationsRW.entry(k -> k.setAsAmqpULong(id),
                     v -> valueSettersByAmqpType.get(value1.kind()).accept(v, value1));
                 break;
             case KIND_NAME:
-                AmqpSymbolFW name = amqpSymbolRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
+                AmqpSymbolFW name = amqpSymbolRW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .set(item.key().name()).build();
-                valueOffset += name.sizeof();
                 OctetsFW valueBytes2 = item.value().bytes();
                 AmqpValueFW value2 = amqpValueRO.wrap(valueBytes2.buffer(), valueBytes2.offset(), valueBytes2.limit());
-                valueOffset += value2.sizeof();
                 annotationsRW.entry(k -> k.setAsAmqpSymbol(name),
                     v -> valueSettersByAmqpType.get(value2.kind()).accept(v, value2));
                 break;
