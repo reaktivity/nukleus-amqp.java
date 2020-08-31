@@ -1526,7 +1526,7 @@ public final class AmqpServerFactory implements StreamFactory
             state = AmqpState.openReply(state);
 
             replyBudget += credit;
-            replyPadding += padding;
+            replyPadding = padding;
 
             if (replyBudgetReserved > 0)
             {
