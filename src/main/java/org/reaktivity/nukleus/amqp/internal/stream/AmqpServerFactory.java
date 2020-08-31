@@ -1511,6 +1511,11 @@ public final class AmqpServerFactory implements StreamFactory
         {
             final long traceId = abort.traceId();
             final long authorization = abort.authorization();
+
+            cleanupStreams(traceId, authorization);
+            cleanupBudgetCreditorIfNecessary();
+            cleanupEncodeSlotIfNecessary();
+
             doNetworkAbort(traceId, authorization);
         }
 
@@ -1578,6 +1583,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = reset.traceId();
             final long authorization = reset.authorization();
 
+            cleanupStreams(traceId, authorization);
             cleanupBudgetCreditorIfNecessary();
             cleanupEncodeSlotIfNecessary();
 
