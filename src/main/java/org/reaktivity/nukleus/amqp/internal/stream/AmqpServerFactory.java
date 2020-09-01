@@ -66,8 +66,6 @@ import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.function.BiConsumer;
-import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
@@ -82,6 +80,7 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
 import org.reaktivity.nukleus.amqp.internal.AmqpNukleus;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationFW;
+import org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationKeyFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpApplicationPropertyFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpBodyKind;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities;
@@ -308,26 +307,6 @@ public final class AmqpServerFactory implements StreamFactory
         decodersByPerformative.put(END, decodeEnd);
         decodersByPerformative.put(CLOSE, decodeClose);
         this.decodersByPerformative = decodersByPerformative;
-    }
-
-    private final Map<AmqpType, Function<AmqpValueFW, Flyweight>> valuesByAmqpType;
-    {
-        final Map<AmqpType, Function<AmqpValueFW, Flyweight>> valuesByAmqpType = new EnumMap<>(AmqpType.class);
-        valuesByAmqpType.put(STRING1, AmqpValueFW::getAsAmqpString);
-        valuesByAmqpType.put(STRING4, AmqpValueFW::getAsAmqpString);
-        valuesByAmqpType.put(BINARY1, AmqpValueFW::getAsAmqpBinary);
-        valuesByAmqpType.put(BINARY4, AmqpValueFW::getAsAmqpBinary);
-        this.valuesByAmqpType = valuesByAmqpType;
-    }
-
-    private final Map<AmqpType, BiConsumer<AmqpValueFW.Builder, AmqpValueFW>> valueSettersByAmqpType;
-    {
-        final Map<AmqpType, BiConsumer<AmqpValueFW.Builder, AmqpValueFW>> valueSettersByAmqpType = new EnumMap<>(AmqpType.class);
-        valueSettersByAmqpType.put(STRING1, (b, v) -> b.setAsAmqpString(v.getAsAmqpString()));
-        valueSettersByAmqpType.put(STRING4, (b, v) -> b.setAsAmqpString(v.getAsAmqpString()));
-        valueSettersByAmqpType.put(BINARY1, (b, v) -> b.setAsAmqpBinary(v.getAsAmqpBinary()));
-        valueSettersByAmqpType.put(BINARY4, (b, v) -> b.setAsAmqpBinary(v.getAsAmqpBinary()));
-        this.valueSettersByAmqpType = valueSettersByAmqpType;
     }
 
     public AmqpServerFactory(
@@ -3115,23 +3094,27 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeMessageAnnotation(
             AmqpAnnotationFW item)
         {
-            switch (item.key().kind())
+            final AmqpAnnotationKeyFW key = item.key();
+            final OctetsFW valueBytes = item.value().bytes();
+            final AmqpValueFW value = valueBytes.get(amqpValueRO::wrap);
+
+            switch (key.kind())
             {
             case KIND_ID:
                 AmqpULongFW id = amqpULongRW.wrap(valueBuffer, 0, valueBuffer.capacity())
-                    .set(item.key().id()).build();
-                OctetsFW valueBytes1 = item.value().bytes();
-                AmqpValueFW value1 = amqpValueRO.wrap(valueBytes1.buffer(), valueBytes1.offset(), valueBytes1.limit());
-                annotationsRW.entry(k -> k.setAsAmqpULong(id),
-                    v -> valueSettersByAmqpType.get(value1.kind()).accept(v, value1));
+                    .set(key.id())
+                    .build();
+                annotationsRW.entry(
+                    k -> k.setAsAmqpULong(id),
+                    v -> v.set(value));
                 break;
             case KIND_NAME:
                 AmqpSymbolFW name = amqpSymbolRW.wrap(valueBuffer, 0, valueBuffer.capacity())
-                    .set(item.key().name()).build();
-                OctetsFW valueBytes2 = item.value().bytes();
-                AmqpValueFW value2 = amqpValueRO.wrap(valueBytes2.buffer(), valueBytes2.offset(), valueBytes2.limit());
-                annotationsRW.entry(k -> k.setAsAmqpSymbol(name),
-                    v -> valueSettersByAmqpType.get(value2.kind()).accept(v, value2));
+                    .set(key.name())
+                    .build();
+                annotationsRW.entry(
+                    k -> k.setAsAmqpSymbol(name),
+                    v -> v.set(value));
                 break;
             }
         }
@@ -3848,21 +3831,21 @@ public final class AmqpServerFactory implements StreamFactory
 
                 annotations.forEach(kv -> vv ->
                 {
-                    Function<AmqpValueFW, Flyweight> function = valuesByAmqpType.get(vv.kind());
-                    Flyweight value = function.apply(vv);
                     switch (kv.kind())
                     {
                     case SYMBOL1:
                         StringFW symbolKey = kv.getAsAmqpSymbol().get();
                         annotationBuilder.item(b -> b.key(k -> k.name(symbolKey))
-                                                     .value(vb -> vb.bytes(value.buffer(), value.offset(), value.sizeof())));
+                                                     .value(vb -> vb.bytes(vv.buffer(), vv.offset(), vv.sizeof())));
                         break;
                     case ULONG0:
                     case ULONG1:
                     case ULONG8:
                         long longKey = kv.getAsAmqpULong().get();
                         annotationBuilder.item(b -> b.key(k -> k.id(longKey))
-                                                     .value(vb -> vb.bytes(value.buffer(), value.offset(), value.sizeof())));
+                                                     .value(vb -> vb.bytes(vv.buffer(), vv.offset(), vv.sizeof())));
+                        break;
+                    default:
                         break;
                     }
                 });
