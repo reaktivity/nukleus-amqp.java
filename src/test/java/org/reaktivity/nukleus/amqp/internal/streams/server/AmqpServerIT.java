@@ -156,7 +156,7 @@ public class AmqpServerIT
     @Specification({
         "${route}/server/controller",
         "${client}/link/detach.exchange/client",
-        "${server}/disconnect.abort/server" })
+        "${server}/disconnect/server" })
     public void shouldExchangeDetach() throws Exception
     {
         k3po.finish();
