@@ -44,6 +44,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.VALUE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.CONNECTION_FRAMING_ERROR;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_DETACH_FORCED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
@@ -1873,7 +1874,7 @@ public final class AmqpServerFactory implements StreamFactory
                 error = detach.error().errorList().condition();
             }
             AmqpSession session = sessions.get(decodeChannel);
-            session.onDecodeDetach(traceId, authorization, error, session.outgoingChannel, detach.handle());
+            session.onDecodeDetach(traceId, authorization, error, detach.handle());
         }
 
         private void onDecodeEnd(
@@ -2173,11 +2174,13 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization,
                 AmqpErrorType errorType,
-                int channel,
                 long handle)
             {
                 AmqpServerStream link = links.get(handle);
-                link.onDecodeDetach(traceId, authorization, errorType, channel, handle);
+                if (link != null)
+                {
+                    link.onDecodeDetach(traceId, authorization, errorType);
+                }
             }
 
             private void cleanup(
@@ -2341,12 +2344,17 @@ public final class AmqpServerFactory implements StreamFactory
                 private void onDecodeDetach(
                     long traceId,
                     long authorization,
-                    AmqpErrorType errorType,
-                    int channel,
-                    long handle)
+                    AmqpErrorType errorType)
                 {
-                    cleanup(traceId, authorization);
-                    doEncodeDetach(traceId, authorization, errorType, channel, handle);
+                    if (errorType == null)
+                    {
+                        doApplicationEnd(traceId, authorization, EMPTY_OCTETS);
+                    }
+                    else
+                    {
+                        cleanup(traceId, authorization);
+                        // TODO: support abortEx
+                    }
                 }
 
                 private void onDecodeError(
@@ -2354,6 +2362,7 @@ public final class AmqpServerFactory implements StreamFactory
                     long authorization,
                     AmqpErrorType errorType)
                 {
+                    cleanup(traceId, authorization);
                     doEncodeDetach(traceId, authorization, errorType, outgoingChannel, handle);
                 }
 
@@ -2560,9 +2569,8 @@ public final class AmqpServerFactory implements StreamFactory
 
                     final long traceId = reset.traceId();
                     final long authorization = reset.authorization();
-                    // TODO
 
-                    cleanup(traceId, authorization);
+                    onDecodeError(traceId, authorization, LINK_DETACH_FORCED);
                 }
 
                 private void onApplicationSignal(
@@ -2754,6 +2762,11 @@ public final class AmqpServerFactory implements StreamFactory
                     EndFW end)
                 {
                     setReplyClosed();
+
+                    final long traceId = end.traceId();
+                    final long authorization = end.authorization();
+
+                    doEncodeDetach(traceId, authorization, null, decodeChannel, handle);
                 }
 
                 private void onApplicationAbort(
