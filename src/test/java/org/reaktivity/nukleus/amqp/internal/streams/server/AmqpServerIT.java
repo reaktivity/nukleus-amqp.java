@@ -162,6 +162,16 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/attach.then.detach.with.error/client",
+        "${server}/connect.and.reset/server" })
+    public void shouldConnectAndReset() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
