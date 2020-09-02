@@ -1059,13 +1059,23 @@ public final class AmqpServerFactory implements StreamFactory
                 extraOffset = sourceList.limit();
             }
 
-            if (addressTo != null && addressTo.length() != -1)
+            if (addressTo != null)
             {
-                AmqpTargetListFW targetList = amqpTargetListRW
-                    .wrap(extraBuffer, extraOffset, extraBuffer.capacity())
-                    .address(addressTo)
-                    .build();
-                builder.target(b -> b.targetList(targetList));
+                if (addressTo.length() != -1)
+                {
+                    AmqpTargetListFW targetList = amqpTargetListRW
+                        .wrap(extraBuffer, extraOffset, extraBuffer.capacity())
+                        .address(addressTo)
+                        .build();
+                    builder.target(b -> b.targetList(targetList));
+                }
+                else
+                {
+                    AmqpTargetListFW targetList = amqpTargetListRW
+                        .wrap(extraBuffer, extraOffset, extraBuffer.capacity())
+                        .build();
+                    builder.target(b -> b.targetList(targetList));
+                }
             }
 
             if (role == AmqpRole.SENDER)
