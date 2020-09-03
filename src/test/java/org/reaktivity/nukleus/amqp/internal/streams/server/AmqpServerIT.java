@@ -165,9 +165,19 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/attach.then.detach.with.error/client",
+        "${client}/link/attach.as.receiver.when.source.does.not.exist/client",
         "${server}/connect.and.reset/server" })
-    public void shouldConnectAndReset() throws Exception
+    public void shouldConnectAsReceiverAndReset() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/attach.as.sender.when.target.does.not.exist/client",
+        "${server}/connect.and.reset/server" })
+    public void shouldConnectAsSenderAndReset() throws Exception
     {
         k3po.finish();
     }
