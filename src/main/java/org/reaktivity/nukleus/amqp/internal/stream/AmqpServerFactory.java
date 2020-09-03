@@ -44,6 +44,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.VALUE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.CONNECTION_FRAMING_ERROR;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_DETACH_FORCED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
@@ -1048,7 +1049,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .rcvSettleMode(receiverSettleMode);
 
             int extraOffset = 0;
-            if (addressFrom.length() != -1)
+            if (addressFrom != null && addressFrom.length() != -1)
             {
                 AmqpSourceListFW sourceList = amqpSourceListRW
                     .wrap(extraBuffer, extraOffset, extraBuffer.capacity())
@@ -1058,22 +1059,23 @@ public final class AmqpServerFactory implements StreamFactory
                 extraOffset = sourceList.limit();
             }
 
-            if (addressTo.length() != -1)
+            if (addressTo != null)
             {
-                AmqpTargetListFW targetList = amqpTargetListRW
-                    .wrap(extraBuffer, extraOffset, extraBuffer.capacity())
-                    .address(addressTo)
-                    .build();
-                builder.target(b -> b.targetList(targetList));
-                extraOffset = targetList.limit();
-            }
-            else
-            {
-                AmqpTargetListFW targetList = amqpTargetListRW
+                if (addressTo.length() != -1)
+                {
+                    AmqpTargetListFW targetList = amqpTargetListRW
+                        .wrap(extraBuffer, extraOffset, extraBuffer.capacity())
+                        .address(addressTo)
+                        .build();
+                    builder.target(b -> b.targetList(targetList));
+                }
+                else
+                {
+                    AmqpTargetListFW targetList = amqpTargetListRW
                         .wrap(extraBuffer, extraOffset, extraBuffer.capacity())
                         .build();
-                builder.target(b -> b.targetList(targetList));
-                extraOffset = targetList.limit();
+                    builder.target(b -> b.targetList(targetList));
+                }
             }
 
             if (role == AmqpRole.SENDER)
@@ -2564,13 +2566,27 @@ public final class AmqpServerFactory implements StreamFactory
                 private void onApplicationReset(
                     ResetFW reset)
                 {
-                    setInitialClosed();
-
                     final long traceId = reset.traceId();
                     final long authorization = reset.authorization();
-                    // TODO
 
-                    cleanup(traceId, authorization);
+                    if (!AmqpState.replyOpened(state))
+                    {
+                        AmqpRole amqpRole = role == RECEIVER ? SENDER : RECEIVER;
+                        if (amqpRole == RECEIVER)
+                        {
+                            doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
+                                addressFrom, null, deliveryCount);
+                        }
+                        else
+                        {
+                            doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
+                                null, addressTo, deliveryCount);
+                        }
+                    }
+
+                    setInitialClosed();
+
+                    onDecodeError(traceId, authorization, LINK_DETACH_FORCED);
                 }
 
                 private void onApplicationSignal(

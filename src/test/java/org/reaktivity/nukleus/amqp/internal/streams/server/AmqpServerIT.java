@@ -162,6 +162,26 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/attach.as.receiver.when.source.does.not.exist/client",
+        "${server}/connect.and.reset/server" })
+    public void shouldConnectAsReceiverAndReset() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/attach.as.sender.when.target.does.not.exist/client",
+        "${server}/connect.and.reset/server" })
+    public void shouldConnectAsSenderAndReset() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
