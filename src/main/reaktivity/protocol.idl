@@ -22,7 +22,7 @@ scope protocol
         struct AmqpProtocolHeader
         {
             octets[4] name;
-            uint8 id = 0xd0;
+            uint8 id;
             uint8 major;
             uint8 minor;
             uint8 revision;
@@ -657,6 +657,43 @@ scope protocol
             AmqpError error;
         }
 
+        list AmqpSaslMechanisms using AmqpList
+        {
+            required AmqpArray<AmqpSymbol> saslServerMechanisms;
+        }
+
+        list AmqpSaslInit using AmqpList
+        {
+            required AmqpSymbol mechanism;
+            AmqpBinary initialResponse;
+            AmqpString hostname;
+        }
+
+        list AmqpSaslChallenge using AmqpList
+        {
+            required AmqpBinary challenge;
+        }
+
+        list AmqpSaslResponse using AmqpList
+        {
+            required AmqpBinary response;
+        }
+
+        enum AmqpSaslCode (AmqpUByte)
+        {
+            OK (0),
+            AUTH (1),
+            SYS (2),
+            SYS_PERM (3),
+            SYS_TEMP (4)
+        }
+
+        list AmqpSaslOutcome using AmqpList
+        {
+            required AmqpSaslCode code;
+            AmqpBinary additionalData;
+        }
+
         union AmqpPerformative switch (AmqpDescribedType)
         {
             case OPEN: AmqpOpen open;
@@ -668,6 +705,11 @@ scope protocol
             case DETACH: AmqpDetach detach;
             case END: AmqpEnd end;
             case CLOSE: AmqpClose close;
+            case SASL_MECHANISMS: AmqpSaslMechanisms saslMechanisms;
+            case SASL_INIT: AmqpSaslInit saslInit;
+            case SASL_CHALLENGE: AmqpSaslChallenge saslChallenge;
+            case SASL_RESPONSE: AmqpSaslResponse saslResponse;
+            case SASL_OUTCOME: AmqpSaslOutcome saslOutcome;
         }
 
         struct AmqpFrameHeader
@@ -780,43 +822,6 @@ scope protocol
 //            case SASL_CHALLENGE: AmqpSaslChallenge saslChallenge;
 //            case SASL_RESPONSE: AmqpSaslResponse saslResponse;
 //            case SASL_OUTCOME: AmqpSaslOutcome saslOutcome;
-//        }
-//
-//        list AmqpSaslMechanisms (AmqpList)
-//        {
-//            required AmqpArray<AmqpSymbol> saslServerMechanisms;
-//        }
-//
-//        list AmqpSaslInit (AmqpList)
-//        {
-//            required AmqpSymbol mechanism;
-//            AmqpBinary initialResponse;
-//            AmqpString hostname;
-//        }
-//
-//        list AmqpSaslChallenge (AmqpList)
-//        {
-//            required AmqpBinary challenge;
-//        }
-//
-//        list AmqpSaslResponse (AmqpList)
-//        {
-//            required AmqpBinary response;
-//        }
-//
-//        list AmqpSaslOutcome (AmqpList)
-//        {
-//            required AmqpSaslCode code;
-//            AmqpBinary additionalData;
-//        }
-//
-//        enum AmqpSaslCode (AmqpUByte)
-//        {
-//            OK (0),
-//            AUTH (1),
-//            SYS (2),
-//            SYS_PERM (3),
-//            SYS_TEMP (4)
 //        }
     }
 }

@@ -87,6 +87,7 @@ import org.reaktivity.nukleus.amqp.internal.types.AmqpBodyKind;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpPropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.Array32FW;
+import org.reaktivity.nukleus.amqp.internal.types.Array8FW;
 import org.reaktivity.nukleus.amqp.internal.types.BoundedOctetsFW;
 import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
 import org.reaktivity.nukleus.amqp.internal.types.OctetsFW;
@@ -112,6 +113,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpProtocolHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettleMode;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSaslMechanismsFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionTypeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSenderSettleMode;
@@ -159,7 +161,9 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int TRANSFER_HEADER_SIZE = 20;
     private static final int PAYLOAD_HEADER_SIZE = 205;
     private static final int NO_DELIVERY_ID = -1;
+    private static final int SASL_PROTOCOL_ID = 3;
     private static final long PROTOCOL_HEADER = 0x414D5150_00010000L;
+    private static final long PROTOCOL_HEADER_SASL = 0x414D5150_03010000L;
 
     private final RouteFW routeRO = new RouteFW();
 
@@ -231,6 +235,9 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpPropertiesFW.Builder propertyRW = new AmqpPropertiesFW.Builder();
     private final Array32FW.Builder<AmqpApplicationPropertyFW.Builder, AmqpApplicationPropertyFW> applicationPropertyRW =
         new Array32FW.Builder<>(new AmqpApplicationPropertyFW.Builder(), new AmqpApplicationPropertyFW());
+    private final AmqpSaslMechanismsFW.Builder amqpSaslMechanismsRW = new AmqpSaslMechanismsFW.Builder();
+    private final Array8FW.Builder<AmqpSymbolFW.Builder, AmqpSymbolFW> annonymousRW =
+        new Array8FW.Builder<>(new AmqpSymbolFW.Builder(), new AmqpSymbolFW());
 
     private final AmqpDescribedTypeFW applicationPropertiesSectionType = new AmqpDescribedTypeFW.Builder()
             .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
@@ -251,6 +258,8 @@ public final class AmqpServerFactory implements StreamFactory
             .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
             .set(DATA)
             .build();
+
+    private final StringFW annonymous = new String8FW("ANONYMOUS");
 
     private final AmqpMessageEncoder amqpMessageHelper = new AmqpMessageEncoder();
     private final AmqpMessageDecoder amqpMessageDecodeHelper = new AmqpMessageDecoder();
@@ -958,6 +967,7 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         private void doEncodeProtocolHeader(
+            int protocolId,
             int major,
             int minor,
             int revision,
@@ -967,7 +977,7 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpProtocolHeaderFW protocolHeader = amqpProtocolHeaderRW
                 .wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, writeBuffer.capacity())
                 .name(n -> n.set("AMQP".getBytes(StandardCharsets.US_ASCII)))
-                .id(0)
+                .id(protocolId)
                 .major(major)
                 .minor(minor)
                 .revision(revision)
@@ -975,6 +985,35 @@ public final class AmqpServerFactory implements StreamFactory
 
             replyBudgetReserved += protocolHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, protocolHeader);
+            if (protocolId == SASL_PROTOCOL_ID)
+            {
+                doEncodeSaslMechanisms(traceId, authorization);
+            }
+        }
+
+        private void doEncodeSaslMechanisms(
+            long traceId,
+            long authorization)
+        {
+            Array8FW<AmqpSymbolFW> annonymousRO = annonymousRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                .item(i -> i.set(annonymous))
+                .build();
+
+            final AmqpSaslMechanismsFW saslMechanisms =
+                amqpSaslMechanismsRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity())
+                    .saslServerMechanisms(annonymousRO)
+                    .build();
+
+            final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
+                .size(FRAME_HEADER_SIZE + saslMechanisms.sizeof())
+                .doff(2)
+                .type(1)
+                .channel(0)
+                .performative(b -> b.saslMechanisms(saslMechanisms))
+                .build();
+
+            replyBudgetReserved += frameHeader.sizeof() + replyPadding;
+            doNetworkData(traceId, authorization, 0L, frameHeader);
         }
 
         private void doEncodeOpen(
@@ -1768,9 +1807,9 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpProtocolHeaderFW header)
         {
-            if (isAmqpHeaderValid(header))
+            if (isProtocolHeaderValid(header))
             {
-                doEncodeProtocolHeader(header.major(), header.minor(), header.revision(), traceId, authorization);
+                doEncodeProtocolHeader(header.id(), header.major(), header.minor(), header.revision(), traceId, authorization);
             }
             else
             {
@@ -1911,10 +1950,11 @@ public final class AmqpServerFactory implements StreamFactory
             }
         }
 
-        private boolean isAmqpHeaderValid(
+        private boolean isProtocolHeaderValid(
             AmqpProtocolHeaderFW header)
         {
-            return PROTOCOL_HEADER == header.buffer().getLong(header.offset(), BIG_ENDIAN);
+            return PROTOCOL_HEADER == header.buffer().getLong(header.offset(), BIG_ENDIAN) ||
+                PROTOCOL_HEADER_SASL == header.buffer().getLong(header.offset(), BIG_ENDIAN);
         }
 
         private void cleanupNetwork(

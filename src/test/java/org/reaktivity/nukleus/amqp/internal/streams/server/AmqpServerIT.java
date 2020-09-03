@@ -68,6 +68,15 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/connection/sasl.exchange/client" })
+    public void shouldExchangeSasl() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/connection/open.exchange/client" })
     public void shouldExchangeOpen() throws Exception
     {
