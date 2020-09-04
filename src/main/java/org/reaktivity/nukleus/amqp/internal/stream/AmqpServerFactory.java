@@ -39,6 +39,11 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.OPEN;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.PROPERTIES;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.SASL_CHALLENGE;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.SASL_INIT;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.SASL_MECHANISMS;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.SASL_OUTCOME;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.SASL_RESPONSE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.SEQUENCE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.TRANSFER;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.VALUE;
@@ -113,6 +118,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpProtocolHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettleMode;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSaslInitFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSaslMechanismsFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionTypeFW;
@@ -296,6 +302,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeDetach = this::decodeDetach;
     private final AmqpServerDecoder decodeEnd = this::decodeEnd;
     private final AmqpServerDecoder decodeClose = this::decodeClose;
+    private final AmqpServerDecoder decodeSaslInit = this::decodeSaslInit;
     private final AmqpServerDecoder decodeIgnoreAll = this::decodeIgnoreAll;
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
 
@@ -315,7 +322,11 @@ public final class AmqpServerFactory implements StreamFactory
         // decodersByPerformative.put(AmqpDescribedType.DISPOSITION, decodeDisposition);
         decodersByPerformative.put(DETACH, decodeDetach);
         decodersByPerformative.put(END, decodeEnd);
-        decodersByPerformative.put(CLOSE, decodeClose);
+        // decodersByPerformative.put(SASL_MECHANISMS, decodeSaslMechanisms);
+        decodersByPerformative.put(SASL_INIT, decodeSaslInit);
+        // decodersByPerformative.put(SASL_CHALLENGE, decodeSaslChallenge);
+        // decodersByPerformative.put(SASL_RESPONSE, decodeSaslResponse);
+        // decodersByPerformative.put(SASL_OUTCOME, decodeSaslOutcome);
         this.decodersByPerformative = decodersByPerformative;
     }
 
@@ -882,6 +893,27 @@ public final class AmqpServerFactory implements StreamFactory
         server.onDecodeClose(traceId, authorization, close);
         server.decoder = decodeFrameType;
         return close.limit();
+    }
+
+    private int decodeSaslInit(
+        AmqpServer server,
+        final long traceId,
+        final long authorization,
+        final long budgetId,
+        final DirectBuffer buffer,
+        final int offset,
+        final int limit)
+    {
+        int progress;
+        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
+        final AmqpSaslInitFW saslInit = performative.saslInit();
+        assert saslInit != null;
+
+        server.onDecodeSaslInit(traceId, authorization, saslInit);
+        server.decoder = decodeFrameType;
+        progress = saslInit.limit();
+
+        return progress;
     }
 
     private int decodeIgnoreAll(
@@ -1948,6 +1980,14 @@ public final class AmqpServerFactory implements StreamFactory
                 doEncodeClose(traceId, authorization, null);
                 doNetworkEndIfNecessary(traceId, authorization);
             }
+        }
+
+        private void onDecodeSaslInit(
+            long traceId,
+            long authorization,
+            AmqpSaslInitFW saslInit)
+        {
+            // TODO
         }
 
         private boolean isProtocolHeaderValid(
