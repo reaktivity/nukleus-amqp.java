@@ -31,6 +31,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_O
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.APPLICATION_PROPERTIES;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.ATTACH;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.BEGIN;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.CLOSE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DATA;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DETACH;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.END;
@@ -114,7 +115,6 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpProtocolHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettleMode;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpRole;
-import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSaslCode;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSaslInitFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSaslMechanismsFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSaslOutcomeFW;
@@ -321,6 +321,7 @@ public final class AmqpServerFactory implements StreamFactory
         // decodersByPerformative.put(AmqpDescribedType.DISPOSITION, decodeDisposition);
         decodersByPerformative.put(DETACH, decodeDetach);
         decodersByPerformative.put(END, decodeEnd);
+        decodersByPerformative.put(CLOSE, decodeClose);
         // decodersByPerformative.put(SASL_MECHANISMS, decodeSaslMechanisms);
         decodersByPerformative.put(SASL_INIT, decodeSaslInit);
         // decodersByPerformative.put(SASL_CHALLENGE, decodeSaslChallenge);
