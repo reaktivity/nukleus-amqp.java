@@ -188,6 +188,8 @@ public final class AmqpServerFactory implements StreamFactory
     private final OctetsFW.Builder payloadRW = new OctetsFW.Builder();
     private final OctetsFW.Builder messageFragmentRW = new OctetsFW.Builder();
 
+    private final OctetsFW octetsRO = new OctetsFW();
+
     private final AmqpProtocolHeaderFW amqpProtocolHeaderRO = new AmqpProtocolHeaderFW();
     private final AmqpFrameHeaderFW amqpFrameHeaderRO = new AmqpFrameHeaderFW();
     private final AmqpPerformativeFW amqpPerformativeRO = new AmqpPerformativeFW();
@@ -463,24 +465,15 @@ public final class AmqpServerFactory implements StreamFactory
         Flyweight payload,
         Flyweight extension)
     {
-        final DataFW.Builder builder = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+        final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(replyId)
             .traceId(traceId)
             .authorization(authorization)
             .flags(flags)
             .budgetId(budgetId)
-            .reserved(reserved);
-
-        if (payload != null)
-        {
-            final DirectBuffer buffer = payload.buffer();
-            final int offset = payload.offset();
-            final int legnth = payload.limit() - offset;
-            builder.payload(buffer, offset, legnth);
-        }
-
-        final DataFW data = builder
+            .reserved(reserved)
+            .payload(payload != null ? octetsRO.wrap(payload.buffer(), payload.offset(), payload.limit()) : null)
             .extension(extension.buffer(), extension.offset(), extension.sizeof())
             .build();
 
