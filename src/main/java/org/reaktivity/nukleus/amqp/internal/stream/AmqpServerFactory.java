@@ -252,6 +252,11 @@ public final class AmqpServerFactory implements StreamFactory
             .set(DATA)
             .build();
 
+    private final OctetsFW nullConstructor = new OctetsFW.Builder()
+        .wrap(new UnsafeBuffer(new byte[1]), 0, 1)
+        .set(new byte[] {0x40})
+        .build();
+
     private final AmqpMessageEncoder amqpMessageHelper = new AmqpMessageEncoder();
     private final AmqpMessageDecoder amqpMessageDecodeHelper = new AmqpMessageDecoder();
 
@@ -460,15 +465,21 @@ public final class AmqpServerFactory implements StreamFactory
         int length,
         Flyweight extension)
     {
-        final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+        final DataFW.Builder builder = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(replyId)
             .traceId(traceId)
             .authorization(authorization)
             .flags(flags)
             .budgetId(budgetId)
-            .reserved(reserved)
-            .payload(buffer, index, length)
+            .reserved(reserved);
+
+        if (buffer != null)
+        {
+            builder.payload(buffer, index, length);
+        }
+
+        final DataFW data = builder
             .extension(extension.buffer(), extension.offset(), extension.sizeof())
             .build();
 
@@ -2426,9 +2437,9 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     assert AmqpState.initialOpening(state);
 
-                    final DirectBuffer buffer = payload.buffer();
-                    final int offset = payload.offset();
-                    final int limit = payload.limit();
+                    final DirectBuffer buffer = payload.sizeof() > 0 ? payload.buffer() : null;
+                    final int offset = payload.sizeof() > 0 ? payload.offset() : -1;
+                    final int limit = payload.sizeof() > 0 ? payload.limit() : -1;
                     final int length = limit - offset;
                     assert reserved >= length + initialPadding;
 
@@ -2936,10 +2947,9 @@ public final class AmqpServerFactory implements StreamFactory
             OctetsFW payload)
         {
             AmqpSectionEncoder previous = null;
-            DirectBuffer buffer = payload.buffer();
-            int offset = payload.offset();
-            int progress = offset;
-            int limit = payload.limit();
+            DirectBuffer buffer = payload != null ? payload.buffer() : null;
+            int progress = payload != null ? payload.offset() : -1;
+            int limit = payload != null ? payload.limit() : -1;
 
             while (progress <= limit && previous != sectionEncoder)
             {
@@ -2994,6 +3004,9 @@ public final class AmqpServerFactory implements StreamFactory
                 break;
             case VALUE:
                 encoder = this::encodeSectionValue;
+                break;
+            case VALUE_NULL:
+                encoder = this::encodeSectionValueNull;
                 break;
             case VALUE_STRING8:
                 encoder = this::encodeSectionValueString8;
@@ -3323,6 +3336,20 @@ public final class AmqpServerFactory implements StreamFactory
             this.sectionEncoder = this::encodeSectionValueBytes;
 
             return progress;
+        }
+
+        private int encodeSectionValueNull(
+            int deferred,
+            DirectBuffer buffer,
+            int offset,
+            int limit)
+        {
+            AmqpDescribedTypeFW descriptor =
+                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
+            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof())
+                .put(nullConstructor);
+
+            return limit;
         }
 
         private int encodeSectionValueString8(
@@ -3686,7 +3713,7 @@ public final class AmqpServerFactory implements StreamFactory
             int progress = offset;
             stream.decodableBytes = 0;
             stream.decodeBodyKind = AmqpBodyKind.VALUE;
-            if (constructorMask != 0xa0 && constructorMask != 0xb0)
+            if (constructorMask != 0xa0 && constructorMask != 0xb0 && constructor != 0x40)
             {
                 messageFragmentRW.put(buffer, progress, Byte.BYTES);
             }
@@ -3696,6 +3723,10 @@ public final class AmqpServerFactory implements StreamFactory
             {
             case 0x40:
                 stream.decodableBytes = 0;
+                if (constructor == 0x40)
+                {
+                    stream.decodeBodyKind = AmqpBodyKind.VALUE_NULL;
+                }
                 break;
             case 0x50:
                 stream.decodableBytes = Byte.BYTES;
