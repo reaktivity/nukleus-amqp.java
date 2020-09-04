@@ -460,9 +460,7 @@ public final class AmqpServerFactory implements StreamFactory
         int flags,
         long budgetId,
         int reserved,
-        DirectBuffer buffer,
-        int index,
-        int length,
+        Flyweight payload,
         Flyweight extension)
     {
         final DataFW.Builder builder = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
@@ -474,9 +472,12 @@ public final class AmqpServerFactory implements StreamFactory
             .budgetId(budgetId)
             .reserved(reserved);
 
-        if (buffer != null)
+        if (payload != null)
         {
-            builder.payload(buffer, index, length);
+            final DirectBuffer buffer = payload.buffer();
+            final int offset = payload.offset();
+            final int legnth = payload.limit() - offset;
+            builder.payload(buffer, offset, legnth);
         }
 
         final DataFW data = builder
@@ -1163,7 +1164,10 @@ public final class AmqpServerFactory implements StreamFactory
 
             frameBuffer.putBytes(transfer.limit(), buffer, offset, length);
             replyBudgetReserved += frameSize + replyPadding;
-            doNetworkData(traceId, authorization, 0L, frameBuffer, 0, frameSize);
+            OctetsFW payload = payloadRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                .set(frameBuffer, 0, frameSize)
+                .build();
+            doNetworkData(traceId, authorization, 0L, payload);
         }
 
         private void doEncodeTransferFragments(
@@ -1322,23 +1326,22 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization,
             long budgetId,
-            DirectBuffer buffer,
-            int offset,
-            int limit,
+            Flyweight payload,
             int maxLimit)
         {
-            encodeNetworkData(traceId, authorization, budgetId, buffer, offset, limit, maxLimit);
+            encodeNetworkData(traceId, authorization, budgetId, payload, maxLimit);
         }
 
         private void encodeNetworkData(
             long traceId,
             long authorization,
             long budgetId,
-            DirectBuffer buffer,
-            int offset,
-            int limit,
+            Flyweight payload,
             int maxLimit)
         {
+            final DirectBuffer buffer = payload.buffer();
+            final int offset = payload.offset();
+            final int limit = payload.limit();
             final int length = Math.max(Math.min(replyBudget - replyPadding, limit - offset), 0);
 
             if (length > 0)
@@ -1349,8 +1352,8 @@ public final class AmqpServerFactory implements StreamFactory
 
                 assert replyBudget >= 0;
 
-                doData(network, routeId, replyId, traceId, authorization, FLAG_INIT_AND_FIN, budgetId,
-                    reserved, buffer, offset, length, EMPTY_OCTETS);
+                doData(network, routeId, replyId, traceId, authorization, FLAG_INIT_AND_FIN, budgetId, reserved, payload,
+                    EMPTY_OCTETS);
             }
 
             final int maxLength = maxLimit - offset;
@@ -1536,8 +1539,11 @@ public final class AmqpServerFactory implements StreamFactory
                 final MutableDirectBuffer buffer = bufferPool.buffer(encodeSlot);
                 final int limit = Math.min(encodeSlotOffset, encodeSlotMaxLimit);
                 final int maxLimit = encodeSlotOffset;
+                OctetsFW payload = payloadRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                    .set(buffer, 0, limit)
+                    .build();
 
-                encodeNetwork(encodeSlotTraceId, authorization, budgetId, buffer, 0, limit, maxLimit);
+                encodeNetwork(encodeSlotTraceId, authorization, budgetId, payload, maxLimit);
             }
 
             flushReplySharedBudget(traceId);
@@ -1618,17 +1624,9 @@ public final class AmqpServerFactory implements StreamFactory
             long budgetId,
             Flyweight payload)
         {
-            doNetworkData(traceId, authorization, budgetId, payload.buffer(), payload.offset(), payload.limit());
-        }
-
-        private void doNetworkData(
-            long traceId,
-            long authorization,
-            long budgetId,
-            DirectBuffer buffer,
-            int offset,
-            int limit)
-        {
+            DirectBuffer buffer = payload.buffer();
+            int offset = payload.offset();
+            int limit = payload.limit();
             int maxLimit = limit;
 
             if (encodeSlot != NO_SLOT)
@@ -1642,9 +1640,12 @@ public final class AmqpServerFactory implements StreamFactory
                 offset = 0;
                 limit = Math.min(encodeSlotOffset, encodeSlotMaxLimit);
                 maxLimit = encodeSlotOffset;
+                payload = payloadRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                    .set(buffer, offset, limit)
+                    .build();
             }
 
-            encodeNetwork(traceId, authorization, budgetId, buffer, offset, limit, maxLimit);
+            encodeNetwork(traceId, authorization, budgetId, payload, maxLimit);
         }
 
         private void doNetworkEnd(
@@ -2318,6 +2319,8 @@ public final class AmqpServerFactory implements StreamFactory
                     transferFlags = aborted ? aborted(transferFlags) : transferFlags;
                     transferFlags = batchable ? batchable(transferFlags) : transferFlags;
 
+                    OctetsFW payload = null;
+                    Flyweight extension = EMPTY_OCTETS;
                     decode:
                     if (!fragmented)
                     {
@@ -2336,19 +2339,25 @@ public final class AmqpServerFactory implements StreamFactory
 
                         final OctetsFW messageFragment = amqpMessageDecodeHelper.decodeFragmentInit(this, buffer, offset, limit,
                             amqpDataEx);
+                        if (messageFragment.sizeof() > 0)
+                        {
+                            payload = messageFragment;
+                        }
 
-                        Flyweight dataEx = amqpDataEx
+                        extension = amqpDataEx
                             .bodyKind(b -> b.set(decodeBodyKind))
                             .deferred(decodableBytes)
                             .build();
-
-                        doApplicationData(traceId, authorization, flags, reserved, messageFragment, dataEx);
                     }
                     else
                     {
                         OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
-                        doApplicationData(traceId, authorization, flags, reserved, messageFragment, EMPTY_OCTETS);
+                        if (messageFragment.sizeof() > 0)
+                        {
+                            payload = messageFragment;
+                        }
                     }
+                    doApplicationData(traceId, authorization, flags, reserved, payload, extension);
 
                     this.fragmented = more;
                 }
@@ -2437,18 +2446,15 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     assert AmqpState.initialOpening(state);
 
-                    final DirectBuffer buffer = payload.sizeof() > 0 ? payload.buffer() : null;
-                    final int offset = payload.sizeof() > 0 ? payload.offset() : -1;
-                    final int limit = payload.sizeof() > 0 ? payload.limit() : -1;
-                    final int length = limit - offset;
+                    final int length = payload != null ? payload.sizeof() : 0;
                     assert reserved >= length + initialPadding;
 
                     this.initialBudget -= reserved;
 
                     assert initialBudget >= 0;
 
-                    doData(application, newRouteId, initialId, traceId, authorization, flags, initialBudgetId, reserved, buffer,
-                        offset, length, extension);
+                    doData(application, newRouteId, initialId, traceId, authorization, flags, initialBudgetId, reserved, payload,
+                        extension);
                 }
 
                 private void doApplicationAbort(
