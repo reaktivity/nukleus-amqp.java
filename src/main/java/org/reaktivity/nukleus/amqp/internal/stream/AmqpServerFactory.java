@@ -1325,10 +1325,12 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization,
             long budgetId,
-            Flyweight payload,
+            DirectBuffer buffer,
+            int offset,
+            int limit,
             int maxLimit)
         {
-            encodeNetworkData(traceId, authorization, budgetId, payload, maxLimit);
+            encodeNetworkData(traceId, authorization, budgetId, payloadRO.wrap(buffer, offset, limit), maxLimit);
         }
 
         private void encodeNetworkData(
@@ -1538,11 +1540,8 @@ public final class AmqpServerFactory implements StreamFactory
                 final MutableDirectBuffer buffer = bufferPool.buffer(encodeSlot);
                 final int limit = Math.min(encodeSlotOffset, encodeSlotMaxLimit);
                 final int maxLimit = encodeSlotOffset;
-                OctetsFW payload = payloadRW.wrap(extraBuffer, 0, extraBuffer.capacity())
-                    .set(buffer, 0, limit)
-                    .build();
 
-                encodeNetwork(encodeSlotTraceId, authorization, budgetId, payload, maxLimit);
+                encodeNetwork(encodeSlotTraceId, authorization, budgetId, buffer, 0, limit, maxLimit);
             }
 
             flushReplySharedBudget(traceId);
@@ -1639,12 +1638,9 @@ public final class AmqpServerFactory implements StreamFactory
                 offset = 0;
                 limit = Math.min(encodeSlotOffset, encodeSlotMaxLimit);
                 maxLimit = encodeSlotOffset;
-                payload = payloadRW.wrap(extraBuffer, 0, extraBuffer.capacity())
-                    .set(buffer, offset, limit)
-                    .build();
             }
 
-            encodeNetwork(traceId, authorization, budgetId, payload, maxLimit);
+            encodeNetwork(traceId, authorization, budgetId, buffer, offset, limit, maxLimit);
         }
 
         private void doNetworkEnd(
