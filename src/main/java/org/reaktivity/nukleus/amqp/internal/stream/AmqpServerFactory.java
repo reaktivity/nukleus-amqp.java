@@ -1330,19 +1330,18 @@ public final class AmqpServerFactory implements StreamFactory
             int limit,
             int maxLimit)
         {
-            encodeNetworkData(traceId, authorization, budgetId, payloadRO.wrap(buffer, offset, limit), maxLimit);
+            encodeNetworkData(traceId, authorization, budgetId, buffer, offset, limit, maxLimit);
         }
 
         private void encodeNetworkData(
             long traceId,
             long authorization,
             long budgetId,
-            Flyweight payload,
+            DirectBuffer buffer,
+            int offset,
+            int limit,
             int maxLimit)
         {
-            final DirectBuffer buffer = payload.buffer();
-            final int offset = payload.offset();
-            final int limit = payload.limit();
             final int length = Math.max(Math.min(replyBudget - replyPadding, limit - offset), 0);
 
             if (length > 0)
@@ -1353,8 +1352,9 @@ public final class AmqpServerFactory implements StreamFactory
 
                 assert replyBudget >= 0;
 
-                doData(network, routeId, replyId, traceId, authorization, FLAG_INIT_AND_FIN, budgetId, reserved, payload,
-                    EMPTY_OCTETS);
+                OctetsFW payload = payloadRO.wrap(buffer, offset, limit);
+                doData(network, routeId, replyId, traceId, authorization, FLAG_INIT_AND_FIN, budgetId, reserved,
+                    payload, EMPTY_OCTETS);
             }
 
             final int maxLength = maxLimit - offset;
