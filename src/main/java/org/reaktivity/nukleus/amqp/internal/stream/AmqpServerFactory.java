@@ -188,7 +188,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final OctetsFW.Builder payloadRW = new OctetsFW.Builder();
     private final OctetsFW.Builder messageFragmentRW = new OctetsFW.Builder();
 
-    private final OctetsFW octetsRO = new OctetsFW();
+    private final OctetsFW payloadRO = new OctetsFW();
 
     private final AmqpProtocolHeaderFW amqpProtocolHeaderRO = new AmqpProtocolHeaderFW();
     private final AmqpFrameHeaderFW amqpFrameHeaderRO = new AmqpFrameHeaderFW();
@@ -235,29 +235,37 @@ public final class AmqpServerFactory implements StreamFactory
         new Array32FW.Builder<>(new AmqpApplicationPropertyFW.Builder(), new AmqpApplicationPropertyFW());
 
     private final AmqpDescribedTypeFW applicationPropertiesSectionType = new AmqpDescribedTypeFW.Builder()
-            .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
-            .set(APPLICATION_PROPERTIES)
-            .build();
+        .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
+        .set(APPLICATION_PROPERTIES)
+        .build();
 
     private final AmqpDescribedTypeFW messagePropertiesSectionType = new AmqpDescribedTypeFW.Builder()
-            .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
-            .set(PROPERTIES)
-            .build();
+        .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
+        .set(PROPERTIES)
+        .build();
 
     private final AmqpDescribedTypeFW messageAnnotationsSectionType = new AmqpDescribedTypeFW.Builder()
-            .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
-            .set(MESSAGE_ANNOTATIONS)
-            .build();
+        .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
+        .set(MESSAGE_ANNOTATIONS)
+        .build();
 
     private final AmqpDescribedTypeFW dataSectionType = new AmqpDescribedTypeFW.Builder()
-            .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
-            .set(DATA)
-            .build();
-
-    private final OctetsFW nullConstructor = new OctetsFW.Builder()
-        .wrap(new UnsafeBuffer(new byte[1]), 0, 1)
-        .set(new byte[] {0x40})
+        .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
+        .set(DATA)
         .build();
+
+    private final AmqpDescribedTypeFW sequenceSectionType = new AmqpDescribedTypeFW.Builder()
+        .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
+        .set(SEQUENCE)
+        .build();
+
+    private final AmqpDescribedTypeFW valueSectionType = new AmqpDescribedTypeFW.Builder()
+        .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
+        .set(VALUE)
+        .build();
+
+    private final OctetsFW nullConstructor = new OctetsFW()
+        .wrap(new UnsafeBuffer(new byte[] {0x40}), 0, 1);
 
     private final AmqpMessageEncoder amqpMessageHelper = new AmqpMessageEncoder();
     private final AmqpMessageDecoder amqpMessageDecodeHelper = new AmqpMessageDecoder();
@@ -473,7 +481,7 @@ public final class AmqpServerFactory implements StreamFactory
             .flags(flags)
             .budgetId(budgetId)
             .reserved(reserved)
-            .payload(payload != null ? octetsRO.wrap(payload.buffer(), payload.offset(), payload.limit()) : null)
+            .payload(payload != null ? payloadRO.wrap(payload.buffer(), payload.offset(), payload.limit()) : null)
             .extension(extension.buffer(), extension.offset(), extension.sizeof())
             .build();
 
@@ -1157,9 +1165,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             frameBuffer.putBytes(transfer.limit(), buffer, offset, length);
             replyBudgetReserved += frameSize + replyPadding;
-            OctetsFW payload = payloadRW.wrap(extraBuffer, 0, extraBuffer.capacity())
-                .set(frameBuffer, 0, frameSize)
-                .build();
+            OctetsFW payload = payloadRO.wrap(frameBuffer, 0, frameSize);
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -2923,9 +2929,15 @@ public final class AmqpServerFactory implements StreamFactory
             encodeMessageAnnotations(dataEx.annotations());
             encodeApplicationProperties(dataEx.applicationProperties());
 
-            this.sectionEncoder = lookupBodyEncoder(bodyKind);
-
-            return encodeSections(deferred, payload);
+            if (payload == null)
+            {
+                return encodeSectionValueNull();
+            }
+            else
+            {
+                this.sectionEncoder = lookupBodyEncoder(bodyKind);
+                return encodeSections(deferred, payload);
+            }
         }
 
         private OctetsFW encodeFragment(
@@ -2946,9 +2958,9 @@ public final class AmqpServerFactory implements StreamFactory
             OctetsFW payload)
         {
             AmqpSectionEncoder previous = null;
-            DirectBuffer buffer = payload != null ? payload.buffer() : null;
-            int progress = payload != null ? payload.offset() : -1;
-            int limit = payload != null ? payload.limit() : -1;
+            final DirectBuffer buffer = payload.buffer();
+            int progress = payload.offset();
+            final int limit = payload.limit();
 
             while (progress <= limit && previous != sectionEncoder)
             {
@@ -3003,9 +3015,6 @@ public final class AmqpServerFactory implements StreamFactory
                 break;
             case VALUE:
                 encoder = this::encodeSectionValue;
-                break;
-            case VALUE_NULL:
-                encoder = this::encodeSectionValueNull;
                 break;
             case VALUE_STRING8:
                 encoder = this::encodeSectionValueString8;
@@ -3241,9 +3250,7 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpType constructorByte = AmqpType.valueOf(buffer.getByte(offset) & 0xFF);
             if (constructorByte != null)
             {
-                AmqpDescribedTypeFW descriptor =
-                    amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(SEQUENCE).build();
-                messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof())
+                messageFragmentRW.put(sequenceSectionType.buffer(), sequenceSectionType.offset(), sequenceSectionType.sizeof())
                     .put(buffer, progress, Byte.BYTES);
                 progress++;
                 switch (constructorByte)
@@ -3292,9 +3299,7 @@ public final class AmqpServerFactory implements StreamFactory
             int progress = offset;
             int constructor = buffer.getByte(offset) & 0xF0;
 
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof())
+            messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof())
                 .put(buffer, progress, Byte.BYTES);
             progress++;
 
@@ -3337,18 +3342,11 @@ public final class AmqpServerFactory implements StreamFactory
             return progress;
         }
 
-        private int encodeSectionValueNull(
-            int deferred,
-            DirectBuffer buffer,
-            int offset,
-            int limit)
+        private OctetsFW encodeSectionValueNull()
         {
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof())
-                .put(nullConstructor);
-
-            return limit;
+            return messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof())
+                .put(nullConstructor)
+                .build();
         }
 
         private int encodeSectionValueString8(
@@ -3358,13 +3356,11 @@ public final class AmqpServerFactory implements StreamFactory
             int limit)
         {
             this.encodableBytes = limit - offset;
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+            messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof());
 
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength8FW bodyHeader =
-                amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                amqpVariableLength8RW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .constructor(c -> c.set(STRING1))
                     .length(length)
                     .build();
@@ -3382,13 +3378,11 @@ public final class AmqpServerFactory implements StreamFactory
             int limit)
         {
             this.encodableBytes = limit - offset;
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+            messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof());
 
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength32FW bodyHeader =
-                amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                amqpVariableLength32RW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .constructor(c -> c.set(STRING4))
                     .length(length)
                     .build();
@@ -3406,13 +3400,11 @@ public final class AmqpServerFactory implements StreamFactory
             int limit)
         {
             this.encodableBytes = limit - offset;
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+            messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof());
 
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength8FW bodyHeader =
-                amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                amqpVariableLength8RW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .constructor(c -> c.set(BINARY1))
                     .length(length)
                     .build();
@@ -3430,13 +3422,11 @@ public final class AmqpServerFactory implements StreamFactory
             int limit)
         {
             this.encodableBytes = limit - offset;
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+            messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof());
 
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength32FW bodyHeader =
-                amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                amqpVariableLength32RW.wrap(valueBuffer, 0, valueBuffer.capacity())
                 .constructor(c -> c.set(BINARY4))
                 .length(length)
                 .build();
@@ -3454,13 +3444,11 @@ public final class AmqpServerFactory implements StreamFactory
             int limit)
         {
             this.encodableBytes = limit - offset;
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+            messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof());
 
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength8FW bodyHeader =
-                amqpVariableLength8RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                amqpVariableLength8RW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .constructor(c -> c.set(AmqpType.SYMBOL1))
                     .length(length)
                     .build();
@@ -3478,13 +3466,11 @@ public final class AmqpServerFactory implements StreamFactory
             int limit)
         {
             this.encodableBytes = limit - offset;
-            AmqpDescribedTypeFW descriptor =
-                amqpDescribedTypeRW.wrap(valueBuffer, 0, valueBuffer.capacity()).set(VALUE).build();
-            messageFragmentRW.put(descriptor.buffer(), descriptor.offset(), descriptor.sizeof());
+            messageFragmentRW.put(valueSectionType.buffer(), valueSectionType.offset(), valueSectionType.sizeof());
 
             int length = deferred == 0 ? encodableBytes : encodableBytes + deferred;
             AmqpVariableLength32FW bodyHeader =
-                amqpVariableLength32RW.wrap(valueBuffer, descriptor.limit(), valueBuffer.capacity())
+                amqpVariableLength32RW.wrap(valueBuffer, 0, valueBuffer.capacity())
                     .constructor(c -> c.set(AmqpType.SYMBOL4))
                     .length(length)
                     .build();
