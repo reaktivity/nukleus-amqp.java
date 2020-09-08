@@ -659,7 +659,7 @@ scope protocol
 
         list AmqpSaslMechanisms using AmqpList
         {
-            required AmqpArray<AmqpSymbol> saslServerMechanisms;
+            required AmqpArray<AmqpSymbol> mechanisms;
         }
 
         list AmqpSaslInit using AmqpList
@@ -705,6 +705,10 @@ scope protocol
             case DETACH: AmqpDetach detach;
             case END: AmqpEnd end;
             case CLOSE: AmqpClose close;
+        }
+
+        union AmqpSecurity switch (AmqpDescribedType)
+        {
             case SASL_MECHANISMS: AmqpSaslMechanisms saslMechanisms;
             case SASL_INIT: AmqpSaslInit saslInit;
             case SASL_CHALLENGE: AmqpSaslChallenge saslChallenge;
@@ -719,6 +723,15 @@ scope protocol
             uint8 type;
             uint16 channel;
             AmqpPerformative performative;
+        }
+
+        struct AmqpSaslFrameHeader
+        {
+            uint32 size;
+            uint8 doff = 2;
+            uint8 type = 1;
+            uint16 ignored = 0;
+            AmqpSecurity security;
         }
 
         list AmqpHeader using AmqpList
