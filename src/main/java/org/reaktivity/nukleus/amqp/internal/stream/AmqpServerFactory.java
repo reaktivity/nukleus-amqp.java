@@ -167,8 +167,7 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int TRANSFER_HEADER_SIZE = 20;
     private static final int PAYLOAD_HEADER_SIZE = 205;
     private static final int NO_DELIVERY_ID = -1;
-    private static final int DEFAULT_PROTOCOL_ID = 0;
-    private static final int TLS_PROTOCOL_ID = 2;
+    private static final int PLAIN_PROTOCOL_ID = 0;
     private static final int SASL_PROTOCOL_ID = 3;
     private static final long PROTOCOL_HEADER = 0x414D5150_00010000L;
     private static final long PROTOCOL_HEADER_SASL = 0x414D5150_03010000L;
@@ -282,10 +281,10 @@ public final class AmqpServerFactory implements StreamFactory
         .set(VALUE)
         .build();
 
-    private final AmqpProtocolHeaderFW defaultProtocolHeader = new AmqpProtocolHeaderFW.Builder()
+    private final AmqpProtocolHeaderFW plainProtocolHeader = new AmqpProtocolHeaderFW.Builder()
         .wrap(new UnsafeBuffer(new byte[8]), 0, 8)
         .name(n -> n.set("AMQP".getBytes(StandardCharsets.US_ASCII)))
-        .id(DEFAULT_PROTOCOL_ID)
+        .id(PLAIN_PROTOCOL_ID)
         .major(1)
         .minor(0)
         .revision(0)
@@ -330,7 +329,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final BudgetCreditor creditor;
     private final LongFunction<BudgetDebitor> supplyDebitor;
 
-    private final AmqpServerDecoder decodeFrame = this::decodeFrame;
+    private final AmqpServerDecoder decodePlainFrame = this::decodePlainFrame;
     private final AmqpServerDecoder decodeSaslFrame = this::decodeSaslFrame;
     private final AmqpServerDecoder decodeProtocolHeader = this::decodeProtocolHeader;
     private final AmqpServerDecoder decodeProtocolHeaderZero = this::decodeProtocolHeaderZero;
@@ -668,7 +667,7 @@ public final class AmqpServerFactory implements StreamFactory
             int limit);
     }
 
-    private int decodeFrame(
+    private int decodePlainFrame(
         AmqpServer server,
         final long traceId,
         final long authorization,
@@ -695,7 +694,7 @@ public final class AmqpServerFactory implements StreamFactory
             if (frameSize > server.decodeMaxFrameSize)
             {
                 server.onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR);
-                server.decoder = decodeFrame;
+                server.decoder = decodePlainFrame;
                 progress = limit;
                 break decode;
             }
@@ -733,7 +732,7 @@ public final class AmqpServerFactory implements StreamFactory
         decode:
         if (length != 0)
         {
-            if (server.isSaslOutcome)
+            if (server.hasSaslOutcome)
             {
                 server.decoder = decodeProtocolHeaderZero;
                 break decode;
@@ -750,7 +749,7 @@ public final class AmqpServerFactory implements StreamFactory
             if (frameSize > server.decodeMaxFrameSize)
             {
                 server.onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR);
-                server.decoder = decodeFrame;
+                server.decoder = decodePlainFrame;
                 progress = limit;
                 break decode;
             }
@@ -786,12 +785,9 @@ public final class AmqpServerFactory implements StreamFactory
 
         switch (protocolId)
         {
-        case DEFAULT_PROTOCOL_ID:
+        case PLAIN_PROTOCOL_ID:
             server.onDecodeProtocolHeader(traceId, authorization, protocolHeader);
-            server.decoder = decodeFrame;
-            break;
-        case TLS_PROTOCOL_ID:
-            // TODO: support TLS
+            server.decoder = decodePlainFrame;
             break;
         case SASL_PROTOCOL_ID:
             server.onDecodeSaslProtocolHeader(traceId, authorization, protocolHeader);
@@ -821,9 +817,9 @@ public final class AmqpServerFactory implements StreamFactory
         if (protocolHeader != null)
         {
             final int protocolId = protocolHeader.id();
-            server.decoder = decodeFrame;
+            server.decoder = decodePlainFrame;
 
-            if (protocolId != 0)
+            if (protocolId != PLAIN_PROTOCOL_ID)
             {
                 server.onDecodeError(traceId, authorization, NOT_ALLOWED);
                 progress = limit;
@@ -852,7 +848,7 @@ public final class AmqpServerFactory implements StreamFactory
         // TODO: verify decodeChannel == 0
         // TODO: verify not already open
         server.onDecodeOpen(traceId, authorization, open);
-        server.decoder = decodeFrame;
+        server.decoder = decodePlainFrame;
         return open.limit();
     }
 
@@ -870,7 +866,7 @@ public final class AmqpServerFactory implements StreamFactory
         assert begin != null;
 
         server.onDecodeBegin(traceId, authorization, begin);
-        server.decoder = decodeFrame;
+        server.decoder = decodePlainFrame;
         return begin.limit();
     }
 
@@ -888,7 +884,7 @@ public final class AmqpServerFactory implements StreamFactory
         assert attach != null;
 
         server.onDecodeAttach(traceId, authorization, attach);
-        server.decoder = decodeFrame;
+        server.decoder = decodePlainFrame;
         return attach.limit();
     }
 
@@ -906,7 +902,7 @@ public final class AmqpServerFactory implements StreamFactory
         assert flow != null;
 
         server.onDecodeFlow(traceId, authorization, flow);
-        server.decoder = decodeFrame;
+        server.decoder = decodePlainFrame;
         return flow.limit();
     }
 
@@ -966,7 +962,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 server.onDecodeTransfer(traceId, authorization, transfer, reserved, buffer, fragmentOffset, fragmentLimit);
 
-                server.decoder = decodeFrame;
+                server.decoder = decodePlainFrame;
                 progress = fragmentLimit;
             }
         }
@@ -998,7 +994,7 @@ public final class AmqpServerFactory implements StreamFactory
         assert detach != null;
 
         server.onDecodeDetach(traceId, authorization, detach);
-        server.decoder = decodeFrame;
+        server.decoder = decodePlainFrame;
         return detach.limit();
     }
 
@@ -1016,7 +1012,7 @@ public final class AmqpServerFactory implements StreamFactory
         assert end != null;
 
         server.onDecodeEnd(traceId, authorization, end);
-        server.decoder = decodeFrame;
+        server.decoder = decodePlainFrame;
         return end.limit();
     }
 
@@ -1034,7 +1030,7 @@ public final class AmqpServerFactory implements StreamFactory
         assert close != null;
 
         server.onDecodeClose(traceId, authorization, close);
-        server.decoder = decodeFrame;
+        server.decoder = decodePlainFrame;
         return close.limit();
     }
 
@@ -1120,7 +1116,7 @@ public final class AmqpServerFactory implements StreamFactory
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
 
-        private boolean isSaslOutcome;
+        private boolean hasSaslOutcome;
 
         private AmqpServerDecoder decoder;
 
@@ -1141,15 +1137,15 @@ public final class AmqpServerFactory implements StreamFactory
             this.replySharedBudgetId = budgetId;
             this.decoder = decodeProtocolHeader;
             this.sessions = new Int2ObjectHashMap<>();
-            this.isSaslOutcome = false;
+            this.hasSaslOutcome = false;
         }
 
-        private void doEncodeProtocolHeader(
+        private void doEncodePlainProtocolHeader(
             long traceId,
             long authorization)
         {
-            replyBudgetReserved += defaultProtocolHeader.sizeof() + replyPadding;
-            doNetworkData(traceId, authorization, 0L, defaultProtocolHeader);
+            replyBudgetReserved += plainProtocolHeader.sizeof() + replyPadding;
+            doNetworkData(traceId, authorization, 0L, plainProtocolHeader);
         }
 
         private void doEncodeSaslProtocolHeader(
@@ -1991,7 +1987,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (isProtocolHeaderValid(header))
             {
-                doEncodeProtocolHeader(traceId, authorization);
+                doEncodePlainProtocolHeader(traceId, authorization);
             }
             else
             {
@@ -2152,7 +2148,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpSaslInitFW saslInit)
         {
-            this.isSaslOutcome = true;
+            this.hasSaslOutcome = true;
             doEncodeSaslOutcome(traceId, authorization, saslInit);
         }
 
