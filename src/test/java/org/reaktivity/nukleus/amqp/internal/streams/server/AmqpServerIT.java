@@ -39,7 +39,7 @@ public class AmqpServerIT
         .addScriptRoot("client", "org/reaktivity/specification/amqp")
         .addScriptRoot("server", "org/reaktivity/specification/nukleus/amqp/streams");
 
-    private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
+    private final TestRule timeout = new DisableOnDebug(new Timeout(30, SECONDS));
 
     private final ReaktorRule reaktor = new ReaktorRule()
         .directory("target/nukleus-itests")
@@ -1263,6 +1263,26 @@ public class AmqpServerIT
         "${server}/max.frame.size.exceeded.with.multiple.sessions.and.links/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "8000")
     public void shouldCloseConnectionWhenMaxFrameSizeExceededWithMultipleSessions() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/server.idle.timeout.expires/client" })
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "10000")
+    public void shouldCloseConnectionWithTimeout() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/server.idle.timeout.does.not.expire/client" })
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "10000")
+    public void shouldPreventTimeoutSentByServer() throws Exception
     {
         k3po.finish();
     }

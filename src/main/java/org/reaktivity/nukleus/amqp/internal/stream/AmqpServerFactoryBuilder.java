@@ -26,6 +26,7 @@ import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
 import org.reaktivity.nukleus.budget.BudgetCreditor;
 import org.reaktivity.nukleus.budget.BudgetDebitor;
 import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.concurrent.Signaler;
 import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
 import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
@@ -44,6 +45,7 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
     private ToIntFunction<String> supplyTypeId;
     private BudgetCreditor creditor;
     private LongFunction<BudgetDebitor> supplyDebitor;
+    private Signaler signaler;
 
     public AmqpServerFactoryBuilder(
         AmqpConfiguration config)
@@ -132,6 +134,14 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
+    public StreamFactoryBuilder setSignaler(
+        Signaler signaler)
+    {
+        this.signaler = signaler;
+        return this;
+    }
+
+    @Override
     public StreamFactory build()
     {
         final BufferPool bufferPool = supplyBufferPool.get();
@@ -147,6 +157,7 @@ public final class AmqpServerFactoryBuilder implements StreamFactoryBuilder
             supplyBudgetId,
             supplyTraceId,
             supplyTypeId,
-            supplyDebitor);
+            supplyDebitor,
+            signaler);
     }
 }
