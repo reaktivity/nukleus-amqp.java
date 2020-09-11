@@ -39,7 +39,7 @@ public class AmqpServerIT
         .addScriptRoot("client", "org/reaktivity/specification/amqp")
         .addScriptRoot("server", "org/reaktivity/specification/nukleus/amqp/streams");
 
-    private final TestRule timeout = new DisableOnDebug(new Timeout(30, SECONDS));
+    private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
     private final ReaktorRule reaktor = new ReaktorRule()
         .directory("target/nukleus-itests")
@@ -1271,7 +1271,7 @@ public class AmqpServerIT
     @Specification({
         "${route}/server/controller",
         "${client}/connection/server.idle.timeout.expires/client" })
-    @Configure(name = "nukleus.amqp.idle.timeout", value = "10000")
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
     public void shouldCloseConnectionWithTimeout() throws Exception
     {
         k3po.finish();
@@ -1281,7 +1281,7 @@ public class AmqpServerIT
     @Specification({
         "${route}/server/controller",
         "${client}/connection/server.idle.timeout.does.not.expire/client" })
-    @Configure(name = "nukleus.amqp.idle.timeout", value = "10000")
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
     public void shouldPreventTimeoutSentByServer() throws Exception
     {
         k3po.finish();
