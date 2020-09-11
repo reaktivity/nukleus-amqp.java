@@ -1286,4 +1286,13 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/client.idle.timeout.does.not.expire/client" })
+    public void shouldPreventTimeoutSentByClient() throws Exception
+    {
+        k3po.finish();
+    }
 }
