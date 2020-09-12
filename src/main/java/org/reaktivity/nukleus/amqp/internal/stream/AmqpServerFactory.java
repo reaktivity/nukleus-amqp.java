@@ -729,10 +729,8 @@ public final class AmqpServerFactory implements StreamFactory
             server.decodeChannel = frameHeader.channel();
             server.decodableBodyBytes = frameSize - frameHeader.doff() * 4;
             server.decoder = decoder;
-            if (descriptor != OPEN)
-            {
-                server.doSignalWriteIdleTimeoutIfNecessary();
-            }
+            server.readIdleTimeout = defaultIdleTimeout;
+            server.doSignalReadIdleTimeoutIfNecessary();
             progress = performative.offset();
         }
 
@@ -1446,7 +1444,6 @@ public final class AmqpServerFactory implements StreamFactory
                         fragmentBuffer, fragmentProgress, fragmentSizeCont);
                 fragmentProgress += fragmentSizeCont;
                 fragmentRemaining -= fragmentSizeCont;
-                doSignalReadIdleTimeoutIfNecessary();
             }
 
             AmqpTransferFW.Builder transferFinBuilder = amqpTransferRW
@@ -1888,7 +1885,6 @@ public final class AmqpServerFactory implements StreamFactory
             final long authorization = signal.authorization();
 
             doEncodeEmptyFrame(traceId, authorization);
-            doSignalWriteIdleTimeoutIfNecessary();
         }
 
         private int onDecodeEmptyFrame(
@@ -1900,7 +1896,6 @@ public final class AmqpServerFactory implements StreamFactory
             OctetsFW frame = payloadRO.wrap(buffer, offset, limit);
             if (frame.value().equals(emptyFrameHeader.value()))
             {
-                doSignalReadIdleTimeoutIfNecessary();
                 progress = limit;
             }
             return progress;
@@ -1955,6 +1950,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             encodeNetwork(traceId, authorization, budgetId, buffer, offset, limit, maxLimit);
+            doSignalWriteIdleTimeoutIfNecessary();
         }
 
         private void doNetworkEnd(
@@ -2117,7 +2113,6 @@ public final class AmqpServerFactory implements StreamFactory
             this.encodeMaxFrameSize = Math.min(replySharedBudget, open.maxFrameSize());
             this.decodeMaxFrameSize = defaultMaxFrameSize;
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
-            this.readIdleTimeout = defaultIdleTimeout;
             if (writeIdleTimeout > 0  && writeIdleTimeout < MIN_IDLE_TIMEOUT)
             {
                 onDecodeError(traceId, authorization, NOT_ALLOWED, timeoutTooSmallDescription);
@@ -2125,8 +2120,6 @@ public final class AmqpServerFactory implements StreamFactory
             else
             {
                 doEncodeOpen(traceId, authorization);
-                doSignalReadIdleTimeoutIfNecessary();
-                doSignalWriteIdleTimeoutIfNecessary();
             }
         }
 
@@ -2150,7 +2143,6 @@ public final class AmqpServerFactory implements StreamFactory
                 session.remoteOutgoingWindow((int) begin.outgoingWindow());
                 session.onDecodeBegin(traceId, authorization);
                 this.outgoingChannel++;
-                doSignalReadIdleTimeoutIfNecessary();
             }
         }
 
@@ -2179,7 +2171,6 @@ public final class AmqpServerFactory implements StreamFactory
             if (session != null)
             {
                 session.onDecodeFlow(traceId, authorization, flow);
-                doSignalReadIdleTimeoutIfNecessary();
             }
             else
             {
@@ -2238,7 +2229,6 @@ public final class AmqpServerFactory implements StreamFactory
                 sessions.remove(decodeChannel);
                 flushReplySharedBudget(traceId);
                 doEncodeEnd(traceId, authorization, session.outgoingChannel, errorType);
-                doSignalReadIdleTimeoutIfNecessary();
             }
         }
 
@@ -2540,7 +2530,6 @@ public final class AmqpServerFactory implements StreamFactory
                     sessions.remove(incomingChannel);
                     flushReplySharedBudget(traceId);
                     doEncodeEnd(traceId, authorization, outgoingChannel, SESSION_WINDOW_VIOLATION);
-                    doSignalReadIdleTimeoutIfNecessary();
                 }
                 else
                 {
@@ -2758,7 +2747,6 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpErrorType errorType)
                 {
                     doEncodeDetach(traceId, authorization, errorType, outgoingChannel, handle);
-                    doSignalReadIdleTimeoutIfNecessary();
                     cleanup(traceId, authorization);
                 }
 
@@ -2974,7 +2962,6 @@ public final class AmqpServerFactory implements StreamFactory
                             doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
                                 null, addressTo, deliveryCount);
                         }
-                        doSignalReadIdleTimeoutIfNecessary();
                     }
 
                     setInitialClosed();
@@ -3011,8 +2998,6 @@ public final class AmqpServerFactory implements StreamFactory
 
                     doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, amqpSenderSettleMode,
                         amqpReceiverSettleMode, addressFrom, addressTo, deliveryCount);
-
-                    doSignalReadIdleTimeoutIfNecessary();
 
                     flushInitialWindow(traceId, authorization);
                 }
@@ -3127,7 +3112,6 @@ public final class AmqpServerFactory implements StreamFactory
                             traceId, authorization, outgoingChannel, handle, more,
                             fragmentBuffer, fragmentProgress, fragmentLimit);
                     }
-                    doSignalReadIdleTimeoutIfNecessary();
                 }
 
                 private void onApplicationDataContOrFin(
@@ -3168,7 +3152,6 @@ public final class AmqpServerFactory implements StreamFactory
                             traceId, authorization, outgoingChannel, handle, more,
                             fragmentBuffer, fragmentOffset, fragmentLimit);
                     }
-                    doSignalReadIdleTimeoutIfNecessary();
                 }
 
                 private void onApplicationEnd(
@@ -3180,7 +3163,6 @@ public final class AmqpServerFactory implements StreamFactory
                     final long authorization = end.authorization();
 
                     doEncodeDetach(traceId, authorization, null, decodeChannel, handle);
-                    doSignalReadIdleTimeoutIfNecessary();
                 }
 
                 private void onApplicationAbort(
