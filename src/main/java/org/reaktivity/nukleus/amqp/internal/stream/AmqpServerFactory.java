@@ -48,6 +48,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DEC
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_DETACH_FORCED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW.DEFAULT_VALUE_MAX_FRAME_SIZE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettleMode.FIRST;
@@ -65,6 +66,7 @@ import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpSenderS
 import static org.reaktivity.nukleus.budget.BudgetCreditor.NO_CREDITOR_INDEX;
 import static org.reaktivity.nukleus.budget.BudgetDebitor.NO_DEBITOR_INDEX;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+import static org.reaktivity.nukleus.concurrent.Signaler.NO_CANCEL_ID;
 
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
@@ -149,6 +151,7 @@ import org.reaktivity.nukleus.amqp.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.budget.BudgetCreditor;
 import org.reaktivity.nukleus.budget.BudgetDebitor;
 import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.concurrent.Signaler;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
@@ -170,6 +173,10 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int PLAIN_PROTOCOL_ID = 0;
     private static final int SASL_PROTOCOL_ID = 3;
     private static final long PROTOCOL_HEADER = 0x414D5150_00010000L;
+    private static final long DEFAULT_IDLE_TIMEOUT = 0;
+    private static final int READ_IDLE_SIGNAL_ID = 0;
+    private static final int WRITE_IDLE_SIGNAL_ID = 1;
+    private static final int MIN_IDLE_TIMEOUT = 100;
     private static final long PROTOCOL_HEADER_SASL = 0x414D5150_03010000L;
 
     private final RouteFW routeRO = new RouteFW();
@@ -302,13 +309,20 @@ public final class AmqpServerFactory implements StreamFactory
     private final OctetsFW nullConstructor = new OctetsFW()
         .wrap(new UnsafeBuffer(new byte[] {0x40}), 0, 1);
 
-    private final StringFW annonymous = new String8FW("ANONYMOUS");
+    private final OctetsFW emptyFrameHeader = new OctetsFW()
+        .wrap(new UnsafeBuffer(new byte[] {0x00, 0x00, 0x00, 0x08, 0x02, 0x00, 0x00, 0x00}), 0, 8);
+
+    private final StringFW timeoutDescription = new String8FW("idle-timeout expired");
+    private final StringFW timeoutTooSmallDescription = new String8FW("idle-timeout is too small");
+    private final StringFW anonymous = new String8FW("ANONYMOUS");
 
     private final AmqpMessageEncoder amqpMessageHelper = new AmqpMessageEncoder();
     private final AmqpMessageDecoder amqpMessageDecodeHelper = new AmqpMessageDecoder();
 
     private final MutableInteger minimum = new MutableInteger(Integer.MAX_VALUE);
     private final MutableInteger maximum = new MutableInteger(0);
+
+    private final Signaler signaler;
 
     private final RouteManager router;
     private final MutableDirectBuffer writeBuffer;
@@ -349,6 +363,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final StringFW containerId;
     private final long defaultMaxFrameSize;
     private final long initialDeliveryCount;
+    private final long defaultIdleTimeout;
 
     private final Map<AmqpDescribedType, AmqpServerDecoder> decodersByPerformative;
     {
@@ -387,7 +402,8 @@ public final class AmqpServerFactory implements StreamFactory
         LongSupplier supplyBudgetId,
         LongSupplier supplyTraceId,
         ToIntFunction<String> supplyTypeId,
-        LongFunction<BudgetDebitor> supplyDebitor)
+        LongFunction<BudgetDebitor> supplyDebitor,
+        Signaler signaler)
     {
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
@@ -407,7 +423,9 @@ public final class AmqpServerFactory implements StreamFactory
         this.containerId = new String8FW(config.containerId());
         this.outgoingWindow = config.outgoingWindow();
         this.defaultMaxFrameSize = config.maxFrameSize();
+        this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
+        this.signaler = signaler;
     }
 
     @Override
@@ -686,6 +704,7 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRO.tryWrap(buffer, offset, limit);
             if (frameHeader == null)
             {
+                progress = server.onDecodeEmptyFrame(buffer, offset, limit);
                 break decode;
             }
 
@@ -693,7 +712,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             if (frameSize > server.decodeMaxFrameSize)
             {
-                server.onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR);
+                server.onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR, null);
                 server.decoder = decodePlainFrame;
                 progress = limit;
                 break decode;
@@ -710,6 +729,8 @@ public final class AmqpServerFactory implements StreamFactory
             server.decodeChannel = frameHeader.channel();
             server.decodableBodyBytes = frameSize - frameHeader.doff() * 4;
             server.decoder = decoder;
+            server.readIdleTimeout = defaultIdleTimeout;
+            server.doSignalReadIdleTimeoutIfNecessary();
             progress = performative.offset();
         }
 
@@ -748,7 +769,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             if (frameSize > server.decodeMaxFrameSize)
             {
-                server.onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR);
+                server.onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR, null);
                 server.decoder = decodePlainFrame;
                 progress = limit;
                 break decode;
@@ -794,7 +815,7 @@ public final class AmqpServerFactory implements StreamFactory
             server.decoder = decodeSaslFrame;
             break;
         default:
-            server.onDecodeError(traceId, authorization, NOT_ALLOWED);
+            server.onDecodeError(traceId, authorization, NOT_ALLOWED, null);
         }
         progress = protocolHeader.limit();
 
@@ -821,7 +842,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             if (protocolId != PLAIN_PROTOCOL_ID)
             {
-                server.onDecodeError(traceId, authorization, NOT_ALLOWED);
+                server.onDecodeError(traceId, authorization, NOT_ALLOWED, null);
                 progress = limit;
                 break decode;
             }
@@ -976,7 +997,7 @@ public final class AmqpServerFactory implements StreamFactory
         final long authorization,
         final int limit)
     {
-        server.onDecodeError(traceId, authorization, DECODE_ERROR);
+        server.onDecodeError(traceId, authorization, DECODE_ERROR, null);
         server.decoder = decodeIgnoreAll;
     }
 
@@ -1076,7 +1097,7 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        server.onDecodeError(traceId, authorization, DECODE_ERROR);
+        server.onDecodeError(traceId, authorization, DECODE_ERROR, null);
         server.decoder = decodeIgnoreAll;
         return limit;
     }
@@ -1115,6 +1136,14 @@ public final class AmqpServerFactory implements StreamFactory
         private long decodableBodyBytes;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
+        private long writeIdleTimeout = DEFAULT_IDLE_TIMEOUT;
+        private long readIdleTimeout = DEFAULT_IDLE_TIMEOUT;
+
+        private long readIdleTimeoutId = NO_CANCEL_ID;
+        private long readIdleTimeoutAt;
+
+        private long writeIdleTimeoutId = NO_CANCEL_ID;
+        private long writeIdleTimeoutAt;
 
         private boolean hasSaslOutcome;
 
@@ -1154,7 +1183,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             replyBudgetReserved += saslProtocolHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, saslProtocolHeader);
-            doEncodeSaslMechanisms(traceId, authorization, annonymous);
+            doEncodeSaslMechanisms(traceId, authorization, anonymous);
         }
 
         private void doEncodeSaslMechanisms(
@@ -1200,6 +1229,13 @@ public final class AmqpServerFactory implements StreamFactory
             doNetworkData(traceId, authorization, 0L, saslFrameHeader);
         }
 
+        private void doEncodeEmptyFrame(
+            long traceId,
+            long authorization)
+        {
+            doNetworkData(traceId, authorization, 0L, emptyFrameHeader);
+        }
+
         private void doEncodeOpen(
             long traceId,
             long authorization)
@@ -1210,6 +1246,11 @@ public final class AmqpServerFactory implements StreamFactory
             if (decodeMaxFrameSize != DEFAULT_VALUE_MAX_FRAME_SIZE)
             {
                 builder.maxFrameSize(decodeMaxFrameSize);
+            }
+
+            if (defaultIdleTimeout != DEFAULT_IDLE_TIMEOUT)
+            {
+                builder.idleTimeOut(defaultIdleTimeout);
             }
 
             final AmqpOpenFW open = builder.build();
@@ -1502,16 +1543,21 @@ public final class AmqpServerFactory implements StreamFactory
         private void doEncodeClose(
             long traceId,
             long authorization,
-            AmqpErrorType errorType)
+            AmqpErrorType errorType,
+            StringFW errorDescription)
         {
             final AmqpCloseFW.Builder builder = amqpCloseRW.wrap(frameBuffer, FRAME_HEADER_SIZE, frameBuffer.capacity());
 
             AmqpCloseFW close;
             if (errorType != null)
             {
-                AmqpErrorListFW errorList = amqpErrorListRW.wrap(extraBuffer, 0, extraBuffer.capacity())
-                    .condition(errorType)
-                    .build();
+                AmqpErrorListFW.Builder errorBuilder = amqpErrorListRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                    .condition(errorType);
+                if (errorDescription != null)
+                {
+                    errorBuilder.description(errorDescription);
+                }
+                AmqpErrorListFW errorList = errorBuilder.build();
                 close = builder.error(e -> e.errorList(errorList)).build();
             }
             else
@@ -1799,17 +1845,70 @@ public final class AmqpServerFactory implements StreamFactory
         private void onNetworkSignal(
             SignalFW signal)
         {
+            final int signalId = signal.signalId();
+
+            switch (signalId)
+            {
+            case READ_IDLE_SIGNAL_ID:
+                onReadIdleTimeoutSignal(signal);
+                break;
+            case WRITE_IDLE_SIGNAL_ID:
+                onWriteIdleTimeoutSignal(signal);
+                break;
+            default:
+                break;
+            }
+        }
+
+        private void onReadIdleTimeoutSignal(
+            SignalFW signal)
+        {
             final long traceId = signal.traceId();
-            doNetworkSignal(traceId);
+            final long authorization = signal.authorization();
+
+            final long now = System.currentTimeMillis();
+            if (now >= readIdleTimeoutAt)
+            {
+                onDecodeError(traceId, authorization, RESOURCE_LIMIT_EXCEEDED, timeoutDescription);
+                decoder = decodeIgnoreAll;
+            }
+            else
+            {
+                readIdleTimeoutId = signaler.signalAt(readIdleTimeoutAt, routeId, replyId, READ_IDLE_SIGNAL_ID);
+            }
+        }
+
+        private void onWriteIdleTimeoutSignal(
+            SignalFW signal)
+        {
+            final long traceId = signal.traceId();
+            final long authorization = signal.authorization();
+
+            doEncodeEmptyFrame(traceId, authorization);
+        }
+
+        private int onDecodeEmptyFrame(
+            final DirectBuffer buffer,
+            final int offset,
+            final int limit)
+        {
+            int progress = offset;
+            OctetsFW frame = payloadRO.wrap(buffer, offset, limit);
+            if (frame.value().equals(emptyFrameHeader.value()))
+            {
+                progress = limit;
+            }
+            return progress;
         }
 
         private void onDecodeError(
             long traceId,
             long authorization,
-            AmqpErrorType errorType)
+            AmqpErrorType errorType,
+            StringFW errorDescription)
         {
             cleanupStreams(traceId, authorization);
-            doEncodeClose(traceId, authorization, errorType);
+            doEncodeClose(traceId, authorization, errorType, errorDescription);
             doNetworkEnd(traceId, authorization);
         }
 
@@ -1851,6 +1950,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             encodeNetwork(traceId, authorization, budgetId, buffer, offset, limit, maxLimit);
+            doSignalWriteIdleTimeoutIfNecessary();
         }
 
         private void doNetworkEnd(
@@ -1901,12 +2001,6 @@ public final class AmqpServerFactory implements StreamFactory
 
             initialBudget += credit;
             doWindow(network, routeId, initialId, traceId, authorization, budgetId, credit, padding, 0);
-        }
-
-        private void doNetworkSignal(
-            long traceId)
-        {
-            doSignal(network, routeId, initialId, traceId);
         }
 
         private void decodeNetworkIfNecessary(
@@ -1991,7 +2085,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
             else
             {
-                onDecodeError(traceId, authorization, DECODE_ERROR);
+                onDecodeError(traceId, authorization, DECODE_ERROR, null);
             }
         }
 
@@ -2006,7 +2100,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
             else
             {
-                onDecodeError(traceId, authorization, DECODE_ERROR);
+                onDecodeError(traceId, authorization, DECODE_ERROR, null);
             }
         }
 
@@ -2018,7 +2112,15 @@ public final class AmqpServerFactory implements StreamFactory
             // TODO: use buffer slot capacity instead
             this.encodeMaxFrameSize = Math.min(replySharedBudget, open.maxFrameSize());
             this.decodeMaxFrameSize = defaultMaxFrameSize;
-            doEncodeOpen(traceId, authorization);
+            this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
+            if (writeIdleTimeout > 0  && writeIdleTimeout < MIN_IDLE_TIMEOUT)
+            {
+                onDecodeError(traceId, authorization, NOT_ALLOWED, timeoutTooSmallDescription);
+            }
+            else
+            {
+                doEncodeOpen(traceId, authorization);
+            }
         }
 
         private void onDecodeBegin(
@@ -2028,7 +2130,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (begin.hasRemoteChannel())
             {
-                onDecodeError(traceId, authorization, NOT_ALLOWED);
+                onDecodeError(traceId, authorization, NOT_ALLOWED, null);
             }
             else
             {
@@ -2056,7 +2158,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
             else
             {
-                onDecodeError(traceId, authorization, NOT_ALLOWED);
+                onDecodeError(traceId, authorization, NOT_ALLOWED, null);
             }
         }
 
@@ -2072,7 +2174,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
             else
             {
-                onDecodeError(traceId, authorization, NOT_ALLOWED);
+                onDecodeError(traceId, authorization, NOT_ALLOWED, null);
             }
         }
 
@@ -2092,7 +2194,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
             else
             {
-                onDecodeError(traceId, authorization, NOT_ALLOWED);
+                onDecodeError(traceId, authorization, NOT_ALLOWED, null);
             }
         }
 
@@ -2138,7 +2240,7 @@ public final class AmqpServerFactory implements StreamFactory
             if (close.fieldCount() == 0)
             {
                 sessions.values().forEach(s -> s.cleanup(traceId, authorization));
-                doEncodeClose(traceId, authorization, null);
+                doEncodeClose(traceId, authorization, null, null);
                 doNetworkEndIfNecessary(traceId, authorization);
             }
         }
@@ -2241,6 +2343,32 @@ public final class AmqpServerFactory implements StreamFactory
             }
         }
 
+        private void doSignalReadIdleTimeoutIfNecessary()
+        {
+            if (readIdleTimeout > 0)
+            {
+                readIdleTimeoutAt = System.currentTimeMillis() + readIdleTimeout;
+
+                if (readIdleTimeoutId == NO_CANCEL_ID)
+                {
+                    readIdleTimeoutId = signaler.signalAt(readIdleTimeoutAt, routeId, replyId, READ_IDLE_SIGNAL_ID);
+                }
+            }
+        }
+
+        private void doSignalWriteIdleTimeoutIfNecessary()
+        {
+            if (writeIdleTimeout > 0)
+            {
+                writeIdleTimeoutAt = System.currentTimeMillis() + (writeIdleTimeout >> 1);
+
+                if (writeIdleTimeoutId == NO_CANCEL_ID)
+                {
+                    writeIdleTimeoutId = signaler.signalAt(writeIdleTimeoutAt, routeId, replyId, WRITE_IDLE_SIGNAL_ID);
+                }
+            }
+        }
+
         private final class AmqpSession
         {
             private final Long2ObjectHashMap<AmqpServerStream> links;
@@ -2315,7 +2443,7 @@ public final class AmqpServerFactory implements StreamFactory
                 final long linkKey = attach.handle();
                 if (links.containsKey(linkKey))
                 {
-                    onDecodeError(traceId, authorization, NOT_ALLOWED);
+                    onDecodeError(traceId, authorization, NOT_ALLOWED, null);
                 }
                 else
                 {
@@ -2618,8 +2746,8 @@ public final class AmqpServerFactory implements StreamFactory
                     long authorization,
                     AmqpErrorType errorType)
                 {
-                    cleanup(traceId, authorization);
                     doEncodeDetach(traceId, authorization, errorType, outgoingChannel, handle);
+                    cleanup(traceId, authorization);
                 }
 
                 private void doApplicationBeginIfNecessary(
@@ -3122,6 +3250,26 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     doApplicationAbortIfNecessary(traceId, authorization);
                     doApplicationResetIfNecessary(traceId, authorization);
+                    doCancelReadIdleTimeoutIfNecessary();
+                    doCancelWriteIdleTimeoutIfNecessary();
+                }
+
+                private void doCancelReadIdleTimeoutIfNecessary()
+                {
+                    if (readIdleTimeoutId != NO_CANCEL_ID)
+                    {
+                        signaler.cancel(readIdleTimeoutId);
+                        readIdleTimeoutId = NO_CANCEL_ID;
+                    }
+                }
+
+                private void doCancelWriteIdleTimeoutIfNecessary()
+                {
+                    if (writeIdleTimeoutId != NO_CANCEL_ID)
+                    {
+                        signaler.cancel(writeIdleTimeoutId);
+                        writeIdleTimeoutId = NO_CANCEL_ID;
+                    }
                 }
 
                 private boolean cleanupCorrelationIfNecessary()

@@ -1275,4 +1275,33 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/server.idle.timeout.expires/client" })
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
+    public void shouldCloseConnectionWithTimeout() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/server.idle.timeout.does.not.expire/client" })
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
+    public void shouldPreventTimeoutSentByServer() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/client.idle.timeout.does.not.expire/client" })
+    public void shouldPreventTimeoutSentByClient() throws Exception
+    {
+        k3po.finish();
+    }
 }
