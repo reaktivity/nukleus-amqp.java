@@ -1611,6 +1611,7 @@ public final class AmqpServerFactory implements StreamFactory
                 OctetsFW payload = payloadRO.wrap(buffer, offset, limit);
                 doData(network, routeId, replyId, traceId, authorization, FLAG_INIT_AND_FIN, budgetId, reserved,
                     payload, EMPTY_OCTETS);
+                doSignalWriteIdleTimeoutIfNecessary();
             }
 
             final int maxLength = maxLimit - offset;
@@ -1884,7 +1885,16 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = signal.traceId();
             final long authorization = signal.authorization();
 
-            doEncodeEmptyFrame(traceId, authorization);
+            final long now = System.currentTimeMillis();
+            if (now >= writeIdleTimeoutAt)
+            {
+                writeIdleTimeoutId = NO_CANCEL_ID;
+                doEncodeEmptyFrame(traceId, authorization);
+            }
+            else
+            {
+                writeIdleTimeoutId = signaler.signalAt(writeIdleTimeoutAt, routeId, replyId, WRITE_IDLE_SIGNAL_ID);
+            }
         }
 
         private int onDecodeEmptyFrame(
@@ -1950,7 +1960,6 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             encodeNetwork(traceId, authorization, budgetId, buffer, offset, limit, maxLimit);
-            doSignalWriteIdleTimeoutIfNecessary();
         }
 
         private void doNetworkEnd(
@@ -2360,7 +2369,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (writeIdleTimeout > 0)
             {
-                writeIdleTimeoutAt = System.currentTimeMillis() + (writeIdleTimeout >> 1);
+                writeIdleTimeoutAt = System.currentTimeMillis() + writeIdleTimeout;
 
                 if (writeIdleTimeoutId == NO_CANCEL_ID)
                 {
