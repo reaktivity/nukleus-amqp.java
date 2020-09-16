@@ -77,6 +77,15 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/connection/protocol.header.unmatched/client" })
+    public void shouldCloseStreamWhenHeaderUnmatched() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/connection/open.exchange/client" })
     public void shouldExchangeOpen() throws Exception
     {
