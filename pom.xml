@@ -53,7 +53,7 @@
 
     <nukleus.plugin.version>0.70</nukleus.plugin.version>
 
-    <nukleus.amqp.spec.version>0.32</nukleus.amqp.spec.version>
+    <nukleus.amqp.spec.version>0.33</nukleus.amqp.spec.version>
     <reaktor.version>0.140</reaktor.version>
   </properties>
 
