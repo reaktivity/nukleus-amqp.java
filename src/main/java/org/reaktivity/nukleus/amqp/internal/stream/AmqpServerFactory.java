@@ -834,18 +834,10 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpProtocolHeaderFW protocolHeader = amqpProtocolHeaderRO.tryWrap(buffer, offset, limit);
         int progress = offset;
 
-        decode:
         if (protocolHeader != null)
         {
             final int protocolId = protocolHeader.id();
             server.decoder = decodePlainFrame;
-
-            if (protocolId != PLAIN_PROTOCOL_ID)
-            {
-                server.onDecodeError(traceId, authorization, NOT_ALLOWED, null);
-                progress = limit;
-                break decode;
-            }
 
             server.onDecodeProtocolHeader(traceId, authorization, protocolHeader);
             progress = protocolHeader.limit();
@@ -2088,13 +2080,10 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpProtocolHeaderFW header)
         {
-            if (isProtocolHeaderValid(header))
+            doEncodePlainProtocolHeader(traceId, authorization);
+            if (!isProtocolHeaderValid(header))
             {
-                doEncodePlainProtocolHeader(traceId, authorization);
-            }
-            else
-            {
-                onDecodeError(traceId, authorization, DECODE_ERROR, null);
+                doNetworkEnd(traceId, authorization);
             }
         }
 
