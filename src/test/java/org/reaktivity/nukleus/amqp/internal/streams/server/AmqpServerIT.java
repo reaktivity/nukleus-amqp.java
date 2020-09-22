@@ -1313,4 +1313,15 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/incoming.window.reduced/client",
+        "${server}/incoming.window.reduced/server" })
+    public void shouldHandleReducedIncomingWindow() throws Exception
+    {
+        k3po.finish();
+    }
 }

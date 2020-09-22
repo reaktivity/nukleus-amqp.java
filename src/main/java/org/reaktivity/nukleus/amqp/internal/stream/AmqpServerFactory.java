@@ -1808,7 +1808,7 @@ public final class AmqpServerFactory implements StreamFactory
             final int replySharedCredit = replySharedBudgetMax - Math.max(this.replySharedBudget, 0)
                 - Math.max(encodeSlotOffset, 0);
 
-            if (replySharedCredit > 0 && replyBudgetReserved == 0)
+            if (replySharedCredit != 0 && replyBudgetReserved == 0)
             {
                 final long replySharedBudgetPrevious = creditor.credit(traceId, replyBudgetIndex, replySharedCredit);
 
