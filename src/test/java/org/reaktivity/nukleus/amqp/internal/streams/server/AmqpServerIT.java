@@ -104,6 +104,16 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/connection/close.timeout/client" })
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
+    public void shouldCloseStreamWhenCloseTimeoutExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/session/begin.exchange/client" })
     public void shouldExchangeBegin() throws Exception
     {
