@@ -1164,6 +1164,7 @@ public final class AmqpServerFactory implements StreamFactory
             this.decoder = decodeProtocolHeader;
             this.sessions = new Int2ObjectHashMap<>();
             this.hasSaslOutcome = false;
+            this.decodeMaxFrameSize = defaultMaxFrameSize;
         }
 
         private void doEncodePlainProtocolHeader(
@@ -2097,6 +2098,7 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpProtocolHeaderFW header)
         {
             doEncodePlainProtocolHeader(traceId, authorization);
+            doEncodeOpen(traceId, authorization);
             if (!isProtocolHeaderValid(header))
             {
                 doNetworkEnd(traceId, authorization);
@@ -2125,15 +2127,10 @@ public final class AmqpServerFactory implements StreamFactory
         {
             // TODO: use buffer slot capacity instead
             this.encodeMaxFrameSize = Math.min(replySharedBudget, open.maxFrameSize());
-            this.decodeMaxFrameSize = defaultMaxFrameSize;
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
             if (writeIdleTimeout > 0  && writeIdleTimeout < MIN_IDLE_TIMEOUT)
             {
                 onDecodeError(traceId, authorization, NOT_ALLOWED, timeoutTooSmallDescription);
-            }
-            else
-            {
-                doEncodeOpen(traceId, authorization);
             }
         }
 
