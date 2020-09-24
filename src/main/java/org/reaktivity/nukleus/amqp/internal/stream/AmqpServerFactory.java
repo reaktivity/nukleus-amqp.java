@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.amqp.internal.stream;
 
+import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
@@ -1868,7 +1869,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = signal.traceId();
             final long authorization = signal.authorization();
 
-            final long now = System.currentTimeMillis();
+            final long now = currentTimeMillis();
             if (now >= readIdleTimeoutAt)
             {
                 onDecodeError(traceId, authorization, RESOURCE_LIMIT_EXCEEDED, timeoutDescription);
@@ -1886,7 +1887,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = signal.traceId();
             final long authorization = signal.authorization();
 
-            final long now = System.currentTimeMillis();
+            final long now = currentTimeMillis();
             if (now >= writeIdleTimeoutAt)
             {
                 writeIdleTimeoutId = NO_CANCEL_ID;
@@ -1927,8 +1928,7 @@ public final class AmqpServerFactory implements StreamFactory
             StringFW errorDescription)
         {
             cleanupStreams(traceId, authorization);
-            doEncodeClose(traceId, authorization, errorType, errorDescription);
-            doNetworkEndIfNecessary(traceId, authorization);
+            doEncodeCloseAndEndIfNecessary(traceId, authorization, errorType, errorDescription);
         }
 
         private void doNetworkBegin(
@@ -2253,8 +2253,7 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpCloseFW close)
         {
             sessions.values().forEach(s -> s.cleanup(traceId, authorization));
-            doEncodeCloseIfNecessary(traceId, authorization);
-            doNetworkEndIfNecessary(traceId, authorization);
+            doEncodeCloseAndEndIfNecessary(traceId, authorization, null, null);
             doCancelCloseTimeoutIfNecessary();
         }
 
@@ -2296,13 +2295,16 @@ public final class AmqpServerFactory implements StreamFactory
             sessions.values().forEach(s -> s.cleanup(traceId, authorization));
         }
 
-        private void doEncodeCloseIfNecessary(
+        private void doEncodeCloseAndEndIfNecessary(
             long traceId,
-            long authorization)
+            long authorization,
+            AmqpErrorType errorType,
+            StringFW errorDescription)
         {
             if (!AmqpState.replyClosed(state))
             {
-                doEncodeClose(traceId, authorization, null, null);
+                doEncodeClose(traceId, authorization, errorType, errorDescription);
+                doNetworkEnd(traceId, authorization);
             }
         }
 
@@ -2379,7 +2381,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (readIdleTimeout > 0)
             {
-                readIdleTimeoutAt = System.currentTimeMillis() + readIdleTimeout;
+                readIdleTimeoutAt = currentTimeMillis() + readIdleTimeout;
 
                 if (readIdleTimeoutId == NO_CANCEL_ID)
                 {
@@ -2392,7 +2394,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (writeIdleTimeout > 0)
             {
-                writeIdleTimeoutAt = System.currentTimeMillis() + writeIdleTimeout;
+                writeIdleTimeoutAt = currentTimeMillis() + writeIdleTimeout;
 
                 if (writeIdleTimeoutId == NO_CANCEL_ID)
                 {
@@ -2403,7 +2405,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         private void doSignalCloseTimeout()
         {
-            long closeTimeoutAt = System.currentTimeMillis() + closeTimeout;
+            final long closeTimeoutAt = currentTimeMillis() + closeTimeout;
 
             assert closeTimeoutId == NO_CANCEL_ID;
             closeTimeoutId = signaler.signalAt(closeTimeoutAt, routeId, replyId, CLOSE_SIGNAL_ID);
