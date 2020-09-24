@@ -1335,4 +1335,22 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/open.exchange.pipelined/client" })
+    public void shouldExchangeOpenPipelined() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/sasl.exchange.then.open.exchange.pipelined/client" })
+    public void shouldExchangeOpenPipelinedAfterSasl() throws Exception
+    {
+        k3po.finish();
+    }
 }
