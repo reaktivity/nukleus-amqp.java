@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.amqp.internal.stream;
 
+import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
@@ -176,6 +177,7 @@ public final class AmqpServerFactory implements StreamFactory
     private static final long DEFAULT_IDLE_TIMEOUT = 0;
     private static final int READ_IDLE_SIGNAL_ID = 0;
     private static final int WRITE_IDLE_SIGNAL_ID = 1;
+    private static final int CLOSE_SIGNAL_ID = 2;
     private static final int MIN_IDLE_TIMEOUT = 100;
     private static final long PROTOCOL_HEADER_SASL = 0x414D5150_03010000L;
 
@@ -360,6 +362,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
 
     private final int outgoingWindow;
+    private final int closeTimeout;
     private final StringFW containerId;
     private final long defaultMaxFrameSize;
     private final long initialDeliveryCount;
@@ -425,6 +428,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.defaultMaxFrameSize = config.maxFrameSize();
         this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
+        this.closeTimeout = config.closeExchangeTimeout();
         this.signaler = signaler;
     }
 
@@ -1137,6 +1141,8 @@ public final class AmqpServerFactory implements StreamFactory
         private long writeIdleTimeoutId = NO_CANCEL_ID;
         private long writeIdleTimeoutAt;
 
+        private long closeTimeoutId = NO_CANCEL_ID;
+
         private boolean hasSaslOutcome;
 
         private AmqpServerDecoder decoder;
@@ -1567,6 +1573,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             replyBudgetReserved += frameHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, frameHeader);
+            doSignalCloseTimeout();
         }
 
         private void encodeNetwork(
@@ -1848,6 +1855,9 @@ public final class AmqpServerFactory implements StreamFactory
             case WRITE_IDLE_SIGNAL_ID:
                 onWriteIdleTimeoutSignal(signal);
                 break;
+            case CLOSE_SIGNAL_ID:
+                onCloseTimeoutSignal(signal);
+                break;
             default:
                 break;
             }
@@ -1859,7 +1869,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = signal.traceId();
             final long authorization = signal.authorization();
 
-            final long now = System.currentTimeMillis();
+            final long now = currentTimeMillis();
             if (now >= readIdleTimeoutAt)
             {
                 onDecodeError(traceId, authorization, RESOURCE_LIMIT_EXCEEDED, timeoutDescription);
@@ -1877,7 +1887,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = signal.traceId();
             final long authorization = signal.authorization();
 
-            final long now = System.currentTimeMillis();
+            final long now = currentTimeMillis();
             if (now >= writeIdleTimeoutAt)
             {
                 writeIdleTimeoutId = NO_CANCEL_ID;
@@ -1887,6 +1897,14 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 writeIdleTimeoutId = signaler.signalAt(writeIdleTimeoutAt, routeId, replyId, WRITE_IDLE_SIGNAL_ID);
             }
+        }
+
+        private void onCloseTimeoutSignal(
+            SignalFW signal)
+        {
+            final long traceId = signal.traceId();
+            final long authorization = signal.authorization();
+            doNetworkEndIfNecessary(traceId, authorization);
         }
 
         private int onDecodeEmptyFrame(
@@ -1910,8 +1928,7 @@ public final class AmqpServerFactory implements StreamFactory
             StringFW errorDescription)
         {
             cleanupStreams(traceId, authorization);
-            doEncodeClose(traceId, authorization, errorType, errorDescription);
-            doNetworkEnd(traceId, authorization);
+            doEncodeCloseAndEndIfNecessary(traceId, authorization, errorType, errorDescription);
         }
 
         private void doNetworkBegin(
@@ -2235,12 +2252,9 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpCloseFW close)
         {
-            if (close.fieldCount() == 0)
-            {
-                sessions.values().forEach(s -> s.cleanup(traceId, authorization));
-                doEncodeClose(traceId, authorization, null, null);
-                doNetworkEndIfNecessary(traceId, authorization);
-            }
+            sessions.values().forEach(s -> s.cleanup(traceId, authorization));
+            doEncodeCloseAndEndIfNecessary(traceId, authorization, null, null);
+            doCancelCloseTimeoutIfNecessary();
         }
 
         private void onDecodeSaslInit(
@@ -2281,6 +2295,19 @@ public final class AmqpServerFactory implements StreamFactory
             sessions.values().forEach(s -> s.cleanup(traceId, authorization));
         }
 
+        private void doEncodeCloseAndEndIfNecessary(
+            long traceId,
+            long authorization,
+            AmqpErrorType errorType,
+            StringFW errorDescription)
+        {
+            if (!AmqpState.replyClosed(state))
+            {
+                doEncodeClose(traceId, authorization, errorType, errorDescription);
+                doNetworkEnd(traceId, authorization);
+            }
+        }
+
         private void doNetworkEndIfNecessary(
                 long traceId,
                 long authorization)
@@ -2308,6 +2335,15 @@ public final class AmqpServerFactory implements StreamFactory
             if (!AmqpState.replyClosed(state))
             {
                 doNetworkAbort(traceId, authorization);
+            }
+        }
+
+        private void doCancelCloseTimeoutIfNecessary()
+        {
+            if (closeTimeoutId != NO_CANCEL_ID)
+            {
+                signaler.cancel(closeTimeoutId);
+                closeTimeoutId = NO_CANCEL_ID;
             }
         }
 
@@ -2345,7 +2381,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (readIdleTimeout > 0)
             {
-                readIdleTimeoutAt = System.currentTimeMillis() + readIdleTimeout;
+                readIdleTimeoutAt = currentTimeMillis() + readIdleTimeout;
 
                 if (readIdleTimeoutId == NO_CANCEL_ID)
                 {
@@ -2358,13 +2394,21 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (writeIdleTimeout > 0)
             {
-                writeIdleTimeoutAt = System.currentTimeMillis() + writeIdleTimeout;
+                writeIdleTimeoutAt = currentTimeMillis() + writeIdleTimeout;
 
                 if (writeIdleTimeoutId == NO_CANCEL_ID)
                 {
                     writeIdleTimeoutId = signaler.signalAt(writeIdleTimeoutAt, routeId, replyId, WRITE_IDLE_SIGNAL_ID);
                 }
             }
+        }
+
+        private void doSignalCloseTimeout()
+        {
+            final long closeTimeoutAt = currentTimeMillis() + closeTimeout;
+
+            assert closeTimeoutId == NO_CANCEL_ID;
+            closeTimeoutId = signaler.signalAt(closeTimeoutAt, routeId, replyId, CLOSE_SIGNAL_ID);
         }
 
         private final class AmqpSession
