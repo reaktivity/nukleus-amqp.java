@@ -1171,8 +1171,18 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization)
         {
-            replyBudgetReserved += plainProtocolHeader.sizeof() + replyPadding;
             doNetworkData(traceId, authorization, 0L, plainProtocolHeader);
+        }
+
+        private void doEncodePlainProtocolHeaderIfNecessary(
+            long traceId,
+            long authorization)
+        {
+            replyBudgetReserved += plainProtocolHeader.sizeof() + replyPadding;
+            if (!hasSaslOutcome)
+            {
+                doEncodePlainProtocolHeader(traceId, authorization);
+            }
         }
 
         private void doEncodeSaslProtocolHeader(
@@ -2097,11 +2107,14 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpProtocolHeaderFW header)
         {
-            doEncodePlainProtocolHeader(traceId, authorization);
-            doEncodeOpen(traceId, authorization);
+            doEncodePlainProtocolHeaderIfNecessary(traceId, authorization);
             if (!isProtocolHeaderValid(header))
             {
                 doNetworkEnd(traceId, authorization);
+            }
+            else if (!hasSaslOutcome)
+            {
+                doEncodeOpen(traceId, authorization);
             }
         }
 
@@ -2128,9 +2141,13 @@ public final class AmqpServerFactory implements StreamFactory
             // TODO: use buffer slot capacity instead
             this.encodeMaxFrameSize = Math.min(replySharedBudget, open.maxFrameSize());
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
-            if (writeIdleTimeout > 0  && writeIdleTimeout < MIN_IDLE_TIMEOUT)
+            if (writeIdleTimeout > 0)
             {
-                onDecodeError(traceId, authorization, NOT_ALLOWED, timeoutTooSmallDescription);
+                if (writeIdleTimeout < MIN_IDLE_TIMEOUT)
+                {
+                    onDecodeError(traceId, authorization, NOT_ALLOWED, timeoutTooSmallDescription);
+                }
+                doSignalWriteIdleTimeoutIfNecessary();
             }
         }
 
@@ -2260,6 +2277,8 @@ public final class AmqpServerFactory implements StreamFactory
         {
             this.hasSaslOutcome = true;
             doEncodeSaslOutcome(traceId, authorization, saslInit);
+            doEncodePlainProtocolHeader(traceId, authorization);
+            doEncodeOpen(traceId, authorization);
         }
 
         private boolean isProtocolHeaderValid(
