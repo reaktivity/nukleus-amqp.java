@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.amqp.internal.streams.server;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
+import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_CLOSE_EXCHANGE_TIMEOUT;
 import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_CONTAINER_ID;
 import static org.reaktivity.reaktor.test.ReaktorRule.EXTERNAL_AFFINITY_MASK;
 
@@ -50,6 +51,7 @@ public class AmqpServerIT
         .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
         .configure(AMQP_CONTAINER_ID, "server")
         .configure(ReaktorConfiguration.REAKTOR_DRAIN_ON_CLOSE, false)
+        .configure(AMQP_CLOSE_EXCHANGE_TIMEOUT, 500)
         .clean();
 
     @Rule
@@ -104,9 +106,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/connection/close.timeout/client" })
+        "${client}/connection/close.exchange.server.abandoned/client" })
     @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
-    public void shouldCloseStreamWhenCloseTimeoutExceeded() throws Exception
+    public void shouldCloseStreamWhenServerAbandoned() throws Exception
     {
         k3po.finish();
     }
