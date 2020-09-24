@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.amqp.internal.stream;
 
+import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
@@ -177,7 +178,6 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int READ_IDLE_SIGNAL_ID = 0;
     private static final int WRITE_IDLE_SIGNAL_ID = 1;
     private static final int CLOSE_SIGNAL_ID = 2;
-    private static final int CLOSE_TIMEOUT = 500;
     private static final int MIN_IDLE_TIMEOUT = 100;
     private static final long PROTOCOL_HEADER_SASL = 0x414D5150_03010000L;
 
@@ -362,6 +362,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
 
     private final int outgoingWindow;
+    private final int closeTimeout;
     private final StringFW containerId;
     private final long defaultMaxFrameSize;
     private final long initialDeliveryCount;
@@ -427,6 +428,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.defaultMaxFrameSize = config.maxFrameSize();
         this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
+        this.closeTimeout = config.closeExchangeTimeout();
         this.signaler = signaler;
     }
 
@@ -1140,7 +1142,6 @@ public final class AmqpServerFactory implements StreamFactory
         private long writeIdleTimeoutAt;
 
         private long closeTimeoutId = NO_CANCEL_ID;
-        private long closeTimeoutAt;
 
         private boolean hasSaslOutcome;
 
@@ -1879,7 +1880,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = signal.traceId();
             final long authorization = signal.authorization();
 
-            final long now = System.currentTimeMillis();
+            final long now = currentTimeMillis();
             if (now >= readIdleTimeoutAt)
             {
                 onDecodeError(traceId, authorization, RESOURCE_LIMIT_EXCEEDED, timeoutDescription);
@@ -1897,7 +1898,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long traceId = signal.traceId();
             final long authorization = signal.authorization();
 
-            final long now = System.currentTimeMillis();
+            final long now = currentTimeMillis();
             if (now >= writeIdleTimeoutAt)
             {
                 writeIdleTimeoutId = NO_CANCEL_ID;
@@ -1938,7 +1939,7 @@ public final class AmqpServerFactory implements StreamFactory
             StringFW errorDescription)
         {
             cleanupStreams(traceId, authorization);
-            doEncodeClose(traceId, authorization, errorType, errorDescription);
+            doEncodeCloseAndEndIfNecessary(traceId, authorization, errorType, errorDescription);
         }
 
         private void doNetworkBegin(
@@ -2266,8 +2267,8 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpCloseFW close)
         {
             sessions.values().forEach(s -> s.cleanup(traceId, authorization));
-            doEncodeClose(traceId, authorization, null, null);
-            doNetworkEndIfNecessary(traceId, authorization);
+            doEncodeCloseAndEndIfNecessary(traceId, authorization, null, null);
+            doCancelCloseTimeoutIfNecessary();
         }
 
         private void onDecodeSaslInit(
@@ -2310,6 +2311,19 @@ public final class AmqpServerFactory implements StreamFactory
             sessions.values().forEach(s -> s.cleanup(traceId, authorization));
         }
 
+        private void doEncodeCloseAndEndIfNecessary(
+            long traceId,
+            long authorization,
+            AmqpErrorType errorType,
+            StringFW errorDescription)
+        {
+            if (!AmqpState.replyClosed(state))
+            {
+                doEncodeClose(traceId, authorization, errorType, errorDescription);
+                doNetworkEnd(traceId, authorization);
+            }
+        }
+
         private void doNetworkEndIfNecessary(
                 long traceId,
                 long authorization)
@@ -2337,6 +2351,15 @@ public final class AmqpServerFactory implements StreamFactory
             if (!AmqpState.replyClosed(state))
             {
                 doNetworkAbort(traceId, authorization);
+            }
+        }
+
+        private void doCancelCloseTimeoutIfNecessary()
+        {
+            if (closeTimeoutId != NO_CANCEL_ID)
+            {
+                signaler.cancel(closeTimeoutId);
+                closeTimeoutId = NO_CANCEL_ID;
             }
         }
 
@@ -2374,7 +2397,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (readIdleTimeout > 0)
             {
-                readIdleTimeoutAt = System.currentTimeMillis() + readIdleTimeout;
+                readIdleTimeoutAt = currentTimeMillis() + readIdleTimeout;
 
                 if (readIdleTimeoutId == NO_CANCEL_ID)
                 {
@@ -2387,7 +2410,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (writeIdleTimeout > 0)
             {
-                writeIdleTimeoutAt = System.currentTimeMillis() + writeIdleTimeout;
+                writeIdleTimeoutAt = currentTimeMillis() + writeIdleTimeout;
 
                 if (writeIdleTimeoutId == NO_CANCEL_ID)
                 {
@@ -2398,12 +2421,10 @@ public final class AmqpServerFactory implements StreamFactory
 
         private void doSignalCloseTimeout()
         {
-            closeTimeoutAt = System.currentTimeMillis() + CLOSE_TIMEOUT;
+            final long closeTimeoutAt = currentTimeMillis() + closeTimeout;
 
-            if (closeTimeoutId == NO_CANCEL_ID)
-            {
-                closeTimeoutId = signaler.signalAt(closeTimeoutAt, routeId, replyId, CLOSE_SIGNAL_ID);
-            }
+            assert closeTimeoutId == NO_CANCEL_ID;
+            closeTimeoutId = signaler.signalAt(closeTimeoutAt, routeId, replyId, CLOSE_SIGNAL_ID);
         }
 
         private final class AmqpSession
