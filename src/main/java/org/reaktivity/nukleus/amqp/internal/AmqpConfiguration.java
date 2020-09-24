@@ -25,6 +25,7 @@ public class AmqpConfiguration extends Configuration
     public static final LongPropertyDef AMQP_IDLE_TIMEOUT;
     public static final IntPropertyDef AMQP_OUTGOING_WINDOW;
     public static final LongPropertyDef AMQP_INITIAL_DEVIVERY_COUNT;
+    public static final IntPropertyDef AMQP_CLOSE_EXCHANGE_TIMEOUT;
     private static final ConfigurationDef AMQP_CONFIG;
 
     static
@@ -36,6 +37,7 @@ public class AmqpConfiguration extends Configuration
         AMQP_IDLE_TIMEOUT = config.property("idle.timeout", 0L);
         AMQP_OUTGOING_WINDOW = config.property("outgoing.window", Integer.MAX_VALUE);
         AMQP_INITIAL_DEVIVERY_COUNT = config.property("initial.delivery.count", 0L);
+        AMQP_CLOSE_EXCHANGE_TIMEOUT = config.property("close.exchange.timeout", 10000);
         AMQP_CONFIG = config;
     }
 
@@ -73,5 +75,10 @@ public class AmqpConfiguration extends Configuration
     public long initialDeliveryCount()
     {
         return AMQP_INITIAL_DEVIVERY_COUNT.getAsLong(this);
+    }
+
+    public int closeExchangeTimeout()
+    {
+        return AMQP_CLOSE_EXCHANGE_TIMEOUT.getAsInt(this);
     }
 }
