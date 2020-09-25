@@ -1353,4 +1353,14 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/simultaneous.close.exchange/client" })
+    @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
+    public void shouldExchangeCloseSimultaneously() throws Exception
+    {
+        k3po.finish();
+    }
 }
