@@ -17,145 +17,151 @@ package org.reaktivity.nukleus.amqp.internal.stream;
 
 public enum AmqpConnectionState
 {
-    START,
-    HDR_RCVD,
-    HDR_SENT,
-    HDR_EXCH,
-    OPEN_PIPE,
-    OC_PIPE,
-    OPEN_RCVD,
-    OPEN_SENT,
-    CLOSE_PIPE,
-    OPENED,
-    CLOSE_RCVD,
-    CLOSE_SENT,
+    START
+    {
+        protected AmqpConnectionState receivedHeader()
+        {
+            return HDR_RCVD;
+        }
+
+        protected AmqpConnectionState sentHeader()
+        {
+            return HDR_SENT;
+        }
+    },
+    HDR_RCVD
+    {
+        protected AmqpConnectionState sentHeader()
+        {
+            return HDR_EXCH;
+        }
+    },
+    HDR_SENT
+    {
+        protected AmqpConnectionState receivedHeader()
+        {
+            return HDR_EXCH;
+        }
+
+        protected AmqpConnectionState sentOpen()
+        {
+            return OPEN_PIPE;
+        }
+    },
+    HDR_EXCH
+    {
+        protected AmqpConnectionState receivedOpen()
+        {
+            return OPEN_RCVD;
+        }
+
+        protected AmqpConnectionState sentOpen()
+        {
+            return OPEN_SENT;
+        }
+    },
+    OPEN_PIPE
+    {
+        protected AmqpConnectionState receivedHeader()
+        {
+            return OPEN_SENT;
+        }
+
+        protected AmqpConnectionState sentClose()
+        {
+            return OC_PIPE;
+        }
+    },
+    OC_PIPE
+    {
+        protected AmqpConnectionState receivedHeader()
+        {
+            return CLOSE_PIPE;
+        }
+    },
+    OPEN_RCVD
+    {
+        protected AmqpConnectionState sentOpen()
+        {
+            return OPENED;
+        }
+    },
+    OPEN_SENT
+    {
+        protected AmqpConnectionState receivedOpen()
+        {
+            return OPENED;
+        }
+
+        protected AmqpConnectionState sentClose()
+        {
+            return CLOSE_PIPE;
+        }
+    },
+    CLOSE_PIPE
+    {
+        protected AmqpConnectionState receivedOpen()
+        {
+            return CLOSE_SENT;
+        }
+    },
+    OPENED
+    {
+        protected AmqpConnectionState receivedClose()
+        {
+            return CLOSE_RCVD;
+        }
+
+        protected AmqpConnectionState sentClose()
+        {
+            return CLOSE_SENT;
+        }
+    },
+    CLOSE_RCVD
+    {
+        protected AmqpConnectionState sentClose()
+        {
+            return END;
+        }
+    },
+    CLOSE_SENT
+    {
+        protected AmqpConnectionState receivedClose()
+        {
+            return END;
+        }
+    },
     DISCARDING,
     END,
     ERROR;
 
-    public static AmqpConnectionState receivedHeader(
-        AmqpConnectionState state)
+    protected AmqpConnectionState receivedHeader()
     {
-        AmqpConnectionState newState = ERROR;
-
-        switch (state)
-        {
-        case START:
-            newState = HDR_RCVD;
-            break;
-        case HDR_SENT:
-            newState = HDR_EXCH;
-            break;
-        case OPEN_PIPE:
-            newState = OPEN_SENT;
-            break;
-        case OC_PIPE:
-            newState = CLOSE_PIPE;
-            break;
-        }
-
-        return newState;
+        return ERROR;
     }
 
-    public static AmqpConnectionState sentHeader(
-        AmqpConnectionState state)
+    protected AmqpConnectionState sentHeader()
     {
-        AmqpConnectionState newState = ERROR;
-
-        switch (state)
-        {
-        case START:
-            newState = HDR_SENT;
-            break;
-        case HDR_RCVD:
-            newState = HDR_EXCH;
-            break;
-        }
-
-        return newState;
+        return ERROR;
     }
 
-    public static AmqpConnectionState receivedOpen(
-        AmqpConnectionState state)
+    protected AmqpConnectionState receivedOpen()
     {
-        AmqpConnectionState newState = ERROR;
-
-        switch (state)
-        {
-        case HDR_EXCH:
-            newState = OPEN_RCVD;
-            break;
-        case OPEN_SENT:
-            newState = OPENED;
-            break;
-        case CLOSE_PIPE:
-            newState = CLOSE_SENT;
-            break;
-        }
-
-        return newState;
+        return ERROR;
     }
 
-    public static AmqpConnectionState sentOpen(
-        AmqpConnectionState state)
+    protected AmqpConnectionState sentOpen()
     {
-        AmqpConnectionState newState = ERROR;
-
-        switch (state)
-        {
-        case HDR_EXCH:
-            newState = OPEN_SENT;
-            break;
-        case OPEN_RCVD:
-            newState = OPENED;
-            break;
-        case HDR_SENT:
-            newState = OPEN_PIPE;
-            break;
-        }
-
-        return newState;
+        return ERROR;
     }
 
-    public static AmqpConnectionState receivedClose(
-        AmqpConnectionState state)
+    protected AmqpConnectionState receivedClose()
     {
-        AmqpConnectionState newState = ERROR;
-
-        switch (state)
-        {
-        case OPENED:
-            newState = CLOSE_RCVD;
-            break;
-        case CLOSE_SENT:
-            newState = END;
-            break;
-        }
-
-        return newState;
+        return ERROR;
     }
 
-    public static AmqpConnectionState sentClose(
-        AmqpConnectionState state)
+    protected AmqpConnectionState sentClose()
     {
-        AmqpConnectionState newState = ERROR;
-
-        switch (state)
-        {
-        case CLOSE_RCVD:
-            newState = END;
-            break;
-        case OPENED:
-            newState = CLOSE_SENT;
-            break;
-        case OPEN_PIPE:
-            newState = OC_PIPE;
-            break;
-        case OPEN_SENT:
-            newState = CLOSE_PIPE;
-            break;
-        }
-
-        return newState;
+        return ERROR;
     }
 }

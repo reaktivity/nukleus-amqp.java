@@ -1196,7 +1196,7 @@ public final class AmqpServerFactory implements StreamFactory
             if (!hasSaslOutcome)
             {
                 doEncodePlainProtocolHeader(traceId, authorization);
-                connectionState = AmqpConnectionState.sentHeader(connectionState);
+                connectionState = connectionState.sentHeader();
                 assert connectionState != ERROR && connectionState == HDR_EXCH;
             }
         }
@@ -2123,7 +2123,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpProtocolHeaderFW header)
         {
-            connectionState = AmqpConnectionState.receivedHeader(connectionState);
+            connectionState = connectionState.receivedHeader();
 
             if (connectionState != ERROR && (connectionState == HDR_RCVD || connectionState == OPEN_SENT))
             {
@@ -2135,7 +2135,7 @@ public final class AmqpServerFactory implements StreamFactory
                 else if (!hasSaslOutcome)
                 {
                     doEncodeOpen(traceId, authorization);
-                    connectionState = AmqpConnectionState.sentOpen(connectionState);
+                    connectionState = connectionState.sentOpen();
                     assert connectionState != ERROR && connectionState == OPEN_SENT;
                 }
             }
@@ -2176,7 +2176,7 @@ public final class AmqpServerFactory implements StreamFactory
                 }
                 doSignalWriteIdleTimeoutIfNecessary();
             }
-            connectionState = AmqpConnectionState.receivedOpen(connectionState);
+            connectionState = connectionState.receivedOpen();
             assert connectionState != ERROR && connectionState == OPENED;
         }
 
@@ -2294,7 +2294,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpCloseFW close)
         {
-            connectionState = AmqpConnectionState.receivedClose(connectionState);
+            connectionState = connectionState.receivedClose();
             if (connectionState != ERROR && (connectionState == CLOSE_RCVD || connectionState == AmqpConnectionState.END))
             {
                 sessions.values().forEach(s -> s.cleanup(traceId, authorization));
@@ -2316,11 +2316,11 @@ public final class AmqpServerFactory implements StreamFactory
             this.hasSaslOutcome = true;
             doEncodeSaslOutcome(traceId, authorization, saslInit);
             doEncodePlainProtocolHeader(traceId, authorization);
-            connectionState = AmqpConnectionState.sentHeader(connectionState);
+            connectionState = connectionState.sentHeader();
             if (connectionState != ERROR && connectionState == HDR_SENT)
             {
                 doEncodeOpen(traceId, authorization);
-                connectionState = AmqpConnectionState.sentOpen(connectionState);
+                connectionState = connectionState.sentOpen();
                 assert connectionState != ERROR && connectionState == OPEN_PIPE;
             }
             else
@@ -2368,7 +2368,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 doEncodeClose(traceId, authorization, errorType, errorDescription);
                 doNetworkEnd(traceId, authorization);
-                connectionState = AmqpConnectionState.sentClose(connectionState);
+                connectionState = connectionState.sentClose();
                 assert connectionState != ERROR && (connectionState == AmqpConnectionState.END || connectionState == CLOSE_SENT);
             }
         }
