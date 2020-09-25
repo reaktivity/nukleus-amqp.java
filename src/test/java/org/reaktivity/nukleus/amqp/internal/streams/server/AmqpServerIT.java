@@ -1363,4 +1363,15 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/simultaneous.end.exchange/client",
+        "${server}/incoming.window.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
+    public void shouldEndSessionSimultaneously() throws Exception
+    {
+        k3po.finish();
+    }
 }
