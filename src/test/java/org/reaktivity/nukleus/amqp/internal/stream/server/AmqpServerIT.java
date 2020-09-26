@@ -13,7 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.amqp.internal.streams.server;
+package org.reaktivity.nukleus.amqp.internal.stream.server;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
@@ -1360,17 +1360,6 @@ public class AmqpServerIT
         "${client}/connection/simultaneous.close.exchange/client" })
     @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
     public void shouldExchangeCloseSimultaneously() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-        "${route}/server/controller",
-        "${client}/session/simultaneous.end.exchange/client",
-        "${server}/incoming.window.exceeded/server" })
-    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
-    public void shouldEndSessionSimultaneously() throws Exception
     {
         k3po.finish();
     }

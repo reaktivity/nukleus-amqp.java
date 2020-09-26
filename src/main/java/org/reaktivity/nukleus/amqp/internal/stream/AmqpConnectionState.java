@@ -114,7 +114,7 @@ public enum AmqpConnectionState
 
         protected AmqpConnectionState sentClose()
         {
-            return CLOSE_SENT;
+            return DISCARDING;
         }
     },
     CLOSE_RCVD
@@ -131,7 +131,13 @@ public enum AmqpConnectionState
             return END;
         }
     },
-    DISCARDING,
+    DISCARDING
+    {
+        protected AmqpConnectionState receivedClose()
+        {
+            return END;
+        }
+    },
     END,
     ERROR;
 

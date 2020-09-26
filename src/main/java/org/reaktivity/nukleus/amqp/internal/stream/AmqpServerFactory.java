@@ -19,15 +19,7 @@ import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.CLOSE_RCVD;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.CLOSE_SENT;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.HDR_EXCH;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.HDR_RCVD;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.HDR_SENT;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.OPENED;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.OPEN_PIPE;
-import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.OPEN_SENT;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.START;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.aborted;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.batchable;
@@ -379,6 +371,8 @@ public final class AmqpServerFactory implements StreamFactory
     private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
 
+    private AmqpConnectionState connectionState;
+
     private final Map<AmqpDescribedType, AmqpServerDecoder> decodersByPerformative;
     {
         final Map<AmqpDescribedType, AmqpServerDecoder> decodersByPerformative = new EnumMap<>(AmqpDescribedType.class);
@@ -483,6 +477,7 @@ public final class AmqpServerFactory implements StreamFactory
             final long affinity = begin.affinity();
 
             newStream = new AmqpServer(sender, routeId, initialId, affinity)::onNetwork;
+            this.connectionState = START;
         }
         return newStream;
     }
@@ -822,6 +817,12 @@ public final class AmqpServerFactory implements StreamFactory
         switch (protocolId)
         {
         case PLAIN_PROTOCOL_ID:
+            connectionState = connectionState.receivedHeader();
+            if (connectionState == ERROR)
+            {
+                server.onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
+                break;
+            }
             server.onDecodeProtocolHeader(traceId, authorization, protocolHeader);
             server.decoder = decodePlainFrame;
             break;
@@ -854,7 +855,16 @@ public final class AmqpServerFactory implements StreamFactory
             final int protocolId = protocolHeader.id();
             server.decoder = decodePlainFrame;
 
-            server.onDecodeProtocolHeader(traceId, authorization, protocolHeader);
+            connectionState = connectionState.receivedHeader();
+            if (connectionState != ERROR)
+            {
+                server.onDecodeProtocolHeader(traceId, authorization, protocolHeader);
+            }
+            else
+            {
+                server.onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
+            }
+
             progress = protocolHeader.limit();
         }
 
@@ -875,8 +885,16 @@ public final class AmqpServerFactory implements StreamFactory
         assert open != null;
         // TODO: verify decodeChannel == 0
         // TODO: verify not already open
-        server.onDecodeOpen(traceId, authorization, open);
-        server.decoder = decodePlainFrame;
+        connectionState = connectionState.receivedOpen();
+        if (connectionState != ERROR)
+        {
+            server.onDecodeOpen(traceId, authorization, open);
+            server.decoder = decodePlainFrame;
+        }
+        else
+        {
+            server.onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
+        }
         return open.limit();
     }
 
@@ -1057,7 +1075,15 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpCloseFW close = performative.close();
         assert close != null;
 
-        server.onDecodeClose(traceId, authorization, close);
+        connectionState = connectionState.receivedClose();
+        if (connectionState != ERROR)
+        {
+            server.onDecodeClose(traceId, authorization);
+        }
+        else
+        {
+            server.onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
+        }
         server.decoder = decodePlainFrame;
         return close.limit();
     }
@@ -1159,7 +1185,6 @@ public final class AmqpServerFactory implements StreamFactory
         private AmqpServerDecoder decoder;
 
         private int state;
-        private AmqpConnectionState connectionState;
 
         private AmqpServer(
             MessageConsumer network,
@@ -1178,7 +1203,6 @@ public final class AmqpServerFactory implements StreamFactory
             this.sessions = new Int2ObjectHashMap<>();
             this.hasSaslOutcome = false;
             this.decodeMaxFrameSize = defaultMaxFrameSize;
-            this.connectionState = START;
         }
 
         private void doEncodePlainProtocolHeader(
@@ -1197,7 +1221,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 doEncodePlainProtocolHeader(traceId, authorization);
                 connectionState = connectionState.sentHeader();
-                assert connectionState != ERROR && connectionState == HDR_EXCH;
+                assert connectionState != ERROR;
             }
         }
 
@@ -2123,25 +2147,16 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpProtocolHeaderFW header)
         {
-            connectionState = connectionState.receivedHeader();
-
-            if (connectionState != ERROR && (connectionState == HDR_RCVD || connectionState == OPEN_SENT))
+            doEncodePlainProtocolHeaderIfNecessary(traceId, authorization);
+            if (!isProtocolHeaderValid(header))
             {
-                doEncodePlainProtocolHeaderIfNecessary(traceId, authorization);
-                if (!isProtocolHeaderValid(header))
-                {
-                    doNetworkEnd(traceId, authorization);
-                }
-                else if (!hasSaslOutcome)
-                {
-                    doEncodeOpen(traceId, authorization);
-                    connectionState = connectionState.sentOpen();
-                    assert connectionState != ERROR && connectionState == OPEN_SENT;
-                }
+                doNetworkEnd(traceId, authorization);
             }
-            else
+            else if (!hasSaslOutcome)
             {
-                onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
+                doEncodeOpen(traceId, authorization);
+                connectionState = connectionState.sentOpen();
+                assert connectionState != ERROR;
             }
         }
 
@@ -2176,8 +2191,6 @@ public final class AmqpServerFactory implements StreamFactory
                 }
                 doSignalWriteIdleTimeoutIfNecessary();
             }
-            connectionState = connectionState.receivedOpen();
-            assert connectionState != ERROR && connectionState == OPENED;
         }
 
         private void onDecodeBegin(
@@ -2291,20 +2304,10 @@ public final class AmqpServerFactory implements StreamFactory
 
         private void onDecodeClose(
             long traceId,
-            long authorization,
-            AmqpCloseFW close)
+            long authorization)
         {
-            connectionState = connectionState.receivedClose();
-            if (connectionState != ERROR && (connectionState == CLOSE_RCVD || connectionState == AmqpConnectionState.END))
-            {
-                sessions.values().forEach(s -> s.cleanup(traceId, authorization));
-                doEncodeCloseAndEndIfNecessary(traceId, authorization, null, null);
-            }
-            else
-            {
-                onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
-            }
-
+            sessions.values().forEach(s -> s.cleanup(traceId, authorization));
+            doEncodeCloseAndEndIfNecessary(traceId, authorization, null, null);
             doCancelCloseTimeoutIfNecessary();
         }
 
@@ -2317,16 +2320,11 @@ public final class AmqpServerFactory implements StreamFactory
             doEncodeSaslOutcome(traceId, authorization, saslInit);
             doEncodePlainProtocolHeader(traceId, authorization);
             connectionState = connectionState.sentHeader();
-            if (connectionState != ERROR && connectionState == HDR_SENT)
-            {
-                doEncodeOpen(traceId, authorization);
-                connectionState = connectionState.sentOpen();
-                assert connectionState != ERROR && connectionState == OPEN_PIPE;
-            }
-            else
-            {
-                onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
-            }
+            assert connectionState != ERROR;
+
+            doEncodeOpen(traceId, authorization);
+            connectionState = connectionState.sentOpen();
+            assert connectionState != ERROR;
         }
 
         private boolean isProtocolHeaderValid(
@@ -2369,7 +2367,7 @@ public final class AmqpServerFactory implements StreamFactory
                 doEncodeClose(traceId, authorization, errorType, errorDescription);
                 doNetworkEnd(traceId, authorization);
                 connectionState = connectionState.sentClose();
-                assert connectionState != ERROR && (connectionState == AmqpConnectionState.END || connectionState == CLOSE_SENT);
+                assert connectionState != ERROR;
             }
         }
 
