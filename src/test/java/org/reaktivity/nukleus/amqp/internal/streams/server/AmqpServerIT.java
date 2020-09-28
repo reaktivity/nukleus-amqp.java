@@ -1357,7 +1357,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/connection/simultaneous.close.exchange/client" })
+        "${client}/connection/close.exchange.simultaneous/client" })
     @Configure(name = "nukleus.amqp.idle.timeout", value = "1000")
     public void shouldExchangeCloseSimultaneously() throws Exception
     {
@@ -1367,7 +1367,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/session/simultaneous.end.exchange/client",
+        "${client}/session/end.exchange.simultaneous/client",
         "${server}/incoming.window.exceeded/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
     public void shouldEndSessionSimultaneously() throws Exception
