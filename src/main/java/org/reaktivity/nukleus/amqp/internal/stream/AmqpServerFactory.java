@@ -876,22 +876,29 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpOpenFW open = performative.open();
-        assert open != null;
-        // TODO: verify decodeChannel == 0
-        // TODO: verify not already open
-        server.connectionState = server.connectionState.receivedOpen();
-        if (server.connectionState == ERROR)
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
+
+        decode:
+        if (performative != null)
         {
-            decodeError(server, traceId, authorization);
-        }
-        else
-        {
+            final AmqpOpenFW open = performative.open();
+            assert open != null;
+            // TODO: verify decodeChannel == 0
+            // TODO: verify not already open
+            server.connectionState = server.connectionState.receivedOpen();
+            if (server.connectionState == ERROR)
+            {
+                decodeError(server, traceId, authorization);
+                break decode;
+            }
+
             server.onDecodeOpen(traceId, authorization, open);
             server.decoder = decodePlainFrame;
+            progress = open.limit();
         }
-        return open.limit();
+
+        return progress;
     }
 
     private int decodeBegin(
@@ -903,13 +910,21 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpBeginFW begin = performative.begin();
-        assert begin != null;
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
 
-        server.onDecodeBegin(traceId, authorization, begin);
-        server.decoder = decodePlainFrame;
-        return begin.limit();
+        if (performative != null)
+        {
+            final AmqpBeginFW begin = performative.begin();
+            assert begin != null;
+
+            server.onDecodeBegin(traceId, authorization, begin);
+            server.decoder = decodePlainFrame;
+
+            progress = begin.limit();
+        }
+
+        return progress;
     }
 
     private int decodeAttach(
@@ -921,13 +936,21 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpAttachFW attach = performative.attach();
-        assert attach != null;
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
 
-        server.onDecodeAttach(traceId, authorization, attach);
-        server.decoder = decodePlainFrame;
-        return attach.limit();
+        if (performative != null)
+        {
+            final AmqpAttachFW attach = performative.attach();
+            assert attach != null;
+
+            server.onDecodeAttach(traceId, authorization, attach);
+            server.decoder = decodePlainFrame;
+
+            progress = attach.limit();
+        }
+
+        return progress;
     }
 
     private int decodeFlow(
@@ -939,13 +962,21 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpFlowFW flow = performative.flow();
-        assert flow != null;
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
 
-        server.onDecodeFlow(traceId, authorization, flow);
-        server.decoder = decodePlainFrame;
-        return flow.limit();
+        if (performative != null)
+        {
+            final AmqpFlowFW flow = performative.flow();
+            assert flow != null;
+
+            server.onDecodeFlow(traceId, authorization, flow);
+            server.decoder = decodePlainFrame;
+
+            progress = flow.limit();
+        }
+
+        return progress;
     }
 
     private int decodeTransfer(
@@ -957,55 +988,59 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        assert performative.kind() == AmqpPerformativeFW.KIND_TRANSFER;
-
-        final AmqpTransferFW transfer = performative.transfer();
-        final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : NO_DELIVERY_ID;
-        final long handle = transfer.handle();
-
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
         int progress = offset;
-        decode:
+
+        if (performative != null)
         {
-            AmqpServer.AmqpSession session = server.sessions.get(server.decodeChannel);
-            assert session != null; // TODO error if null
+            assert performative.kind() == AmqpPerformativeFW.KIND_TRANSFER;
 
-            AmqpServer.AmqpSession.AmqpServerStream sender = session.links.get(handle);
-            assert sender != null; // TODO error if null
+            final AmqpTransferFW transfer = performative.transfer();
+            final long deliveryId = transfer.hasDeliveryId() ? transfer.deliveryId() : NO_DELIVERY_ID;
+            final long handle = transfer.handle();
 
-            server.decodableBodyBytes -= transfer.offset() - performative.offset();
-            if (!sender.fragmented)
+            decode:
             {
-                assert deliveryId != NO_DELIVERY_ID; // TODO: error
-                assert deliveryId == session.remoteDeliveryId + 1; // TODO: error
-                session.remoteDeliveryId = deliveryId;
-            }
+                AmqpServer.AmqpSession session = server.sessions.get(server.decodeChannel);
+                assert session != null; // TODO error if null
 
-            if (deliveryId != NO_DELIVERY_ID && deliveryId != session.remoteDeliveryId) // TODO: error
-            {
-                break decode;
-            }
-            server.decodableBodyBytes -= transfer.sizeof();
-            final int fragmentOffset = transfer.limit();
-            final int fragmentSize = (int) server.decodableBodyBytes;
-            final int fragmentLimit = fragmentOffset + fragmentSize;
+                AmqpServer.AmqpSession.AmqpServerStream sender = session.links.get(handle);
+                assert sender != null; // TODO error if null
 
-            assert fragmentLimit <= limit;
+                server.decodableBodyBytes -= transfer.offset() - performative.offset();
+                if (!sender.fragmented)
+                {
+                    assert deliveryId != NO_DELIVERY_ID; // TODO: error
+                    assert deliveryId == session.remoteDeliveryId + 1; // TODO: error
+                    session.remoteDeliveryId = deliveryId;
+                }
 
-            int reserved = fragmentSize + sender.initialPadding;
-            boolean canSend = reserved <= sender.initialBudget;
+                if (deliveryId != NO_DELIVERY_ID && deliveryId != session.remoteDeliveryId) // TODO: error
+                {
+                    break decode;
+                }
+                server.decodableBodyBytes -= transfer.sizeof();
+                final int fragmentOffset = transfer.limit();
+                final int fragmentSize = (int) server.decodableBodyBytes;
+                final int fragmentLimit = fragmentOffset + fragmentSize;
 
-            if (canSend && sender.debitorIndex != NO_DEBITOR_INDEX)
-            {
-                reserved = sender.debitor.claim(traceId, sender.debitorIndex, sender.initialId, reserved, reserved, 0);
-            }
+                assert fragmentLimit <= limit;
 
-            if (canSend && reserved != 0)
-            {
-                server.onDecodeTransfer(traceId, authorization, transfer, reserved, buffer, fragmentOffset, fragmentLimit);
+                int reserved = fragmentSize + sender.initialPadding;
+                boolean canSend = reserved <= sender.initialBudget;
 
-                server.decoder = decodePlainFrame;
-                progress = fragmentLimit;
+                if (canSend && sender.debitorIndex != NO_DEBITOR_INDEX)
+                {
+                    reserved = sender.debitor.claim(traceId, sender.debitorIndex, sender.initialId, reserved, reserved, 0);
+                }
+
+                if (canSend && reserved != 0)
+                {
+                    server.onDecodeTransfer(traceId, authorization, transfer, reserved, buffer, fragmentOffset, fragmentLimit);
+
+                    server.decoder = decodePlainFrame;
+                    progress = fragmentLimit;
+                }
             }
         }
 
@@ -1030,13 +1065,21 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpDetachFW detach = performative.detach();
-        assert detach != null;
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
 
-        server.onDecodeDetach(traceId, authorization, detach);
-        server.decoder = decodePlainFrame;
-        return detach.limit();
+        if (performative != null)
+        {
+            final AmqpDetachFW detach = performative.detach();
+            assert detach != null;
+
+            server.onDecodeDetach(traceId, authorization, detach);
+            server.decoder = decodePlainFrame;
+
+            progress = detach.limit();
+        }
+
+        return progress;
     }
 
     private int decodeEnd(
@@ -1048,13 +1091,21 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpEndFW end = performative.end();
-        assert end != null;
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
 
-        server.onDecodeEnd(traceId, authorization, end);
-        server.decoder = decodePlainFrame;
-        return end.limit();
+        if (performative != null)
+        {
+            final AmqpEndFW end = performative.end();
+            assert end != null;
+
+            server.onDecodeEnd(traceId, authorization, end);
+            server.decoder = decodePlainFrame;
+
+            progress = end.limit();
+        }
+
+        return progress;
     }
 
     private int decodeClose(
@@ -1066,21 +1117,29 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        final AmqpPerformativeFW performative = amqpPerformativeRO.wrap(buffer, offset, limit);
-        final AmqpCloseFW close = performative.close();
-        assert close != null;
+        final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
 
-        server.connectionState = server.connectionState.receivedClose();
-        if (server.connectionState == ERROR)
+        decode:
+        if (performative != null)
         {
-            decodeError(server, traceId, authorization);
-        }
-        else
-        {
+            final AmqpCloseFW close = performative.close();
+            assert close != null;
+
+            server.connectionState = server.connectionState.receivedClose();
+            if (server.connectionState == ERROR)
+            {
+                decodeError(server, traceId, authorization);
+                break decode;
+            }
+
             server.onDecodeClose(traceId, authorization);
             server.decoder = decodePlainFrame;
+
+            progress = close.limit();
         }
-        return close.limit();
+
+        return progress;
     }
 
     private int decodeSaslInit(
@@ -1092,14 +1151,18 @@ public final class AmqpServerFactory implements StreamFactory
         final int offset,
         final int limit)
     {
-        int progress;
-        final AmqpSecurityFW security = amqpSecurityRO.wrap(buffer, offset, limit);
-        final AmqpSaslInitFW saslInit = security.saslInit();
-        assert saslInit != null;
+        final AmqpSecurityFW security = amqpSecurityRO.tryWrap(buffer, offset, limit);
+        int progress = offset;
 
-        server.onDecodeSaslInit(traceId, authorization, saslInit);
-        server.decoder = decodeSaslFrame;
-        progress = saslInit.limit();
+        if (security != null)
+        {
+            final AmqpSaslInitFW saslInit = security.saslInit();
+            assert saslInit != null;
+
+            server.onDecodeSaslInit(traceId, authorization, saslInit);
+            server.decoder = decodeSaslFrame;
+            progress = saslInit.limit();
+        }
 
         return progress;
     }
