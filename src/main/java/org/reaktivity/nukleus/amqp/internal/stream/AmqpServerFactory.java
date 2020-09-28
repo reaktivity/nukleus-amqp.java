@@ -2376,15 +2376,19 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpSaslInitFW saslInit)
         {
-            this.hasSaslOutcome = true;
-            doEncodeSaslOutcome(traceId, authorization, saslInit);
-            doEncodePlainProtocolHeader(traceId, authorization);
-            connectionState = connectionState.sentHeader();
-            assert connectionState != ERROR;
-
-            doEncodeOpen(traceId, authorization);
-            connectionState = connectionState.sentOpen();
-            assert connectionState != ERROR;
+            if (connectionState != START)
+            {
+                onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
+            }
+            else
+            {
+                this.hasSaslOutcome = true;
+                doEncodeSaslOutcome(traceId, authorization, saslInit);
+                doEncodePlainProtocolHeader(traceId, authorization);
+                connectionState = connectionState.sentHeader();
+                doEncodeOpen(traceId, authorization);
+                connectionState = connectionState.sentOpen();
+            }
         }
 
         private boolean isProtocolHeaderValid(
@@ -2427,7 +2431,10 @@ public final class AmqpServerFactory implements StreamFactory
                 doEncodeClose(traceId, authorization, errorType, errorDescription);
                 doNetworkEnd(traceId, authorization);
                 connectionState = connectionState.sentClose();
-                assert connectionState != ERROR;
+                if (connectionState == ERROR)
+                {
+                    onDecodeError(traceId, authorization, errorType, errorDescription);
+                }
             }
         }
 
