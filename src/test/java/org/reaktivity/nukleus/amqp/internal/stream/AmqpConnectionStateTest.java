@@ -21,6 +21,7 @@ import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.CL
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.CLOSE_SENT;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.DISCARDING;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.END;
+import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.HDR_EXCH;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.HDR_RCVD;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.HDR_SENT;
@@ -36,135 +37,134 @@ import org.junit.Test;
 public class AmqpConnectionStateTest
 {
     @Test
-    public void shouldTransitionFromStartToHeaderReceived() throws Exception
+    public void shouldTransitionFromStart() throws Exception
     {
-        AmqpConnectionState state = START.receivedHeader();
-        assertEquals(HDR_RCVD, state);
+        assertEquals(HDR_SENT, START.sentHeader());
+        assertEquals(HDR_RCVD, START.receivedHeader());
+        assertEquals(ERROR, START.sentOpen());
+        assertEquals(ERROR, START.receivedOpen());
+        assertEquals(ERROR, START.sentClose());
+        assertEquals(ERROR, START.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromStartToHeaderSent() throws Exception
+    public void shouldTransitionFromHeaderReceived() throws Exception
     {
-        AmqpConnectionState state = START.sentHeader();
-        assertEquals(HDR_SENT, state);
+        assertEquals(HDR_EXCH, HDR_RCVD.sentHeader());
+        assertEquals(ERROR, HDR_RCVD.receivedHeader());
+        assertEquals(ERROR, HDR_RCVD.sentOpen());
+        assertEquals(ERROR, HDR_RCVD.receivedOpen());
+        assertEquals(ERROR, HDR_RCVD.sentClose());
+        assertEquals(ERROR, HDR_RCVD.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromHeaderReceivedToHeaderExchanged() throws Exception
+    public void shouldTransitionFromHeaderSent() throws Exception
     {
-        AmqpConnectionState state = HDR_RCVD.sentHeader();
-        assertEquals(HDR_EXCH, state);
+        assertEquals(ERROR, HDR_SENT.sentHeader());
+        assertEquals(HDR_EXCH, HDR_SENT.receivedHeader());
+        assertEquals(OPEN_PIPE, HDR_SENT.sentOpen());
+        assertEquals(ERROR, HDR_SENT.receivedOpen());
+        assertEquals(ERROR, HDR_SENT.sentClose());
+        assertEquals(ERROR, HDR_SENT.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromHeaderSentToHeaderExchanged() throws Exception
+    public void shouldTransitionFromHeaderExchanged() throws Exception
     {
-        AmqpConnectionState state = HDR_SENT.receivedHeader();
-        assertEquals(HDR_EXCH, state);
+        assertEquals(ERROR, HDR_EXCH.sentHeader());
+        assertEquals(ERROR, HDR_EXCH.receivedHeader());
+        assertEquals(OPEN_SENT, HDR_EXCH.sentOpen());
+        assertEquals(OPEN_RCVD, HDR_EXCH.receivedOpen());
+        assertEquals(ERROR, HDR_EXCH.sentClose());
+        assertEquals(ERROR, HDR_EXCH.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromHeaderExchangedToOpenReceived() throws Exception
+    public void shouldTransitionFromOpenReceived() throws Exception
     {
-        AmqpConnectionState state = HDR_EXCH.receivedOpen();
-        assertEquals(OPEN_RCVD, state);
+        assertEquals(ERROR, OPEN_RCVD.sentHeader());
+        assertEquals(ERROR, OPEN_RCVD.receivedHeader());
+        assertEquals(OPENED, OPEN_RCVD.sentOpen());
+        assertEquals(ERROR, OPEN_RCVD.receivedOpen());
+        assertEquals(ERROR, OPEN_RCVD.sentClose());
+        assertEquals(ERROR, OPEN_RCVD.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromHeaderExchangedToOpenSent() throws Exception
+    public void shouldTransitionFromOpenSent() throws Exception
     {
-        AmqpConnectionState state = HDR_EXCH.sentOpen();
-        assertEquals(OPEN_SENT, state);
+        assertEquals(ERROR, OPEN_SENT.sentHeader());
+        assertEquals(ERROR, OPEN_SENT.receivedHeader());
+        assertEquals(ERROR, OPEN_SENT.sentOpen());
+        assertEquals(OPENED, OPEN_SENT.receivedOpen());
+        assertEquals(CLOSE_PIPE, OPEN_SENT.sentClose());
+        assertEquals(ERROR, OPEN_SENT.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromOpenReceivedToOpened() throws Exception
+    public void shouldTransitionFromOpened() throws Exception
     {
-        AmqpConnectionState state = OPEN_RCVD.sentOpen();
-        assertEquals(OPENED, state);
+        assertEquals(ERROR, OPENED.sentHeader());
+        assertEquals(ERROR, OPENED.receivedHeader());
+        assertEquals(ERROR, OPENED.sentOpen());
+        assertEquals(ERROR, OPENED.receivedOpen());
+        assertEquals(DISCARDING, OPENED.sentClose());
+        assertEquals(CLOSE_RCVD, OPENED.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromOpenSentToOpened() throws Exception
+    public void shouldTransitionFromCloseReceived() throws Exception
     {
-        AmqpConnectionState state = OPEN_SENT.receivedOpen();
-        assertEquals(OPENED, state);
+        assertEquals(ERROR, CLOSE_RCVD.sentHeader());
+        assertEquals(ERROR, CLOSE_RCVD.receivedHeader());
+        assertEquals(ERROR, CLOSE_RCVD.sentOpen());
+        assertEquals(ERROR, CLOSE_RCVD.receivedOpen());
+        assertEquals(END, CLOSE_RCVD.sentClose());
+        assertEquals(ERROR, CLOSE_RCVD.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromOpenedToCloseReceived() throws Exception
+    public void shouldTransitionFromCloseSent() throws Exception
     {
-        AmqpConnectionState state = OPENED.receivedClose();
-        assertEquals(CLOSE_RCVD, state);
+        assertEquals(ERROR, CLOSE_SENT.sentHeader());
+        assertEquals(ERROR, CLOSE_SENT.receivedHeader());
+        assertEquals(ERROR, CLOSE_SENT.sentOpen());
+        assertEquals(ERROR, CLOSE_SENT.receivedOpen());
+        assertEquals(ERROR, CLOSE_SENT.sentClose());
+        assertEquals(END, CLOSE_SENT.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromOpenedToDiscarding() throws Exception
+    public void shouldTransitionFromOpenPipelined() throws Exception
     {
-        AmqpConnectionState state = OPENED.sentClose();
-        assertEquals(DISCARDING, state);
+        assertEquals(ERROR, OPEN_PIPE.sentHeader());
+        assertEquals(OPEN_SENT, OPEN_PIPE.receivedHeader());
+        assertEquals(ERROR, OPEN_PIPE.sentOpen());
+        assertEquals(ERROR, OPEN_PIPE.receivedOpen());
+        assertEquals(OC_PIPE, OPEN_PIPE.sentClose());
+        assertEquals(ERROR, OPEN_PIPE.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromCloseReceivedToEnd() throws Exception
+    public void shouldTransitionFromOpenClosePipelined() throws Exception
     {
-        AmqpConnectionState state = CLOSE_RCVD.sentClose();
-        assertEquals(END, state);
+        assertEquals(ERROR, OC_PIPE.sentHeader());
+        assertEquals(CLOSE_PIPE, OC_PIPE.receivedHeader());
+        assertEquals(ERROR, OC_PIPE.sentOpen());
+        assertEquals(ERROR, OC_PIPE.receivedOpen());
+        assertEquals(ERROR, OC_PIPE.sentClose());
+        assertEquals(ERROR, OC_PIPE.receivedClose());
     }
 
     @Test
-    public void shouldTransitionFromDiscardingToEnd() throws Exception
+    public void shouldTransitionFromClosePipelined() throws Exception
     {
-        AmqpConnectionState state = DISCARDING.receivedClose();
-        assertEquals(END, state);
-    }
-
-    @Test
-    public void shouldTransitionFromCloseSentToEnd() throws Exception
-    {
-        AmqpConnectionState state = CLOSE_SENT.receivedClose();
-        assertEquals(END, state);
-    }
-
-    @Test
-    public void shouldTransitionFromHeaderSentToOpenPipelined() throws Exception
-    {
-        AmqpConnectionState state = HDR_SENT.sentOpen();
-        assertEquals(OPEN_PIPE, state);
-    }
-
-    @Test
-    public void shouldTransitionFromOpenPipelinedToOpenSent() throws Exception
-    {
-        AmqpConnectionState state = OPEN_PIPE.receivedHeader();
-        assertEquals(OPEN_SENT, state);
-    }
-
-    @Test
-    public void shouldTransitionFromOpenPipelinedToOpenClosePipelined() throws Exception
-    {
-        AmqpConnectionState state = OPEN_PIPE.sentClose();
-        assertEquals(OC_PIPE, state);
-    }
-
-    @Test
-    public void shouldTransitionFromOpenClosePipelinedToClosePipelined() throws Exception
-    {
-        AmqpConnectionState state = OC_PIPE.receivedHeader();
-        assertEquals(CLOSE_PIPE, state);
-    }
-
-    @Test
-    public void shouldTransitionFromOpenSentToClosePipelined() throws Exception
-    {
-        AmqpConnectionState state = OPEN_SENT.sentClose();
-        assertEquals(CLOSE_PIPE, state);
-    }
-
-    @Test
-    public void shouldTransitionFromClosePipelinedToCloseSent() throws Exception
-    {
-        AmqpConnectionState state = CLOSE_PIPE.receivedOpen();
-        assertEquals(CLOSE_SENT, state);
+        assertEquals(ERROR, CLOSE_PIPE.sentHeader());
+        assertEquals(ERROR, CLOSE_PIPE.receivedHeader());
+        assertEquals(ERROR, CLOSE_PIPE.sentOpen());
+        assertEquals(CLOSE_SENT, CLOSE_PIPE.receivedOpen());
+        assertEquals(ERROR, CLOSE_PIPE.sentClose());
+        assertEquals(ERROR, CLOSE_PIPE.receivedClose());
     }
 }
