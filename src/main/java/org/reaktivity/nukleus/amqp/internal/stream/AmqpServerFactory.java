@@ -1154,10 +1154,17 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpSecurityFW security = amqpSecurityRO.tryWrap(buffer, offset, limit);
         int progress = offset;
 
+        decode:
         if (security != null)
         {
             final AmqpSaslInitFW saslInit = security.saslInit();
             assert saslInit != null;
+
+            if (server.connectionState != START)
+            {
+                decodeError(server, traceId, authorization);
+                break decode;
+            }
 
             server.onDecodeSaslInit(traceId, authorization, saslInit);
             server.decoder = decodeSaslFrame;
@@ -2376,19 +2383,12 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             AmqpSaslInitFW saslInit)
         {
-            if (connectionState != START)
-            {
-                onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
-            }
-            else
-            {
-                this.hasSaslOutcome = true;
-                doEncodeSaslOutcome(traceId, authorization, saslInit);
-                doEncodePlainProtocolHeader(traceId, authorization);
-                connectionState = connectionState.sentHeader();
-                doEncodeOpen(traceId, authorization);
-                connectionState = connectionState.sentOpen();
-            }
+            this.hasSaslOutcome = true;
+            doEncodeSaslOutcome(traceId, authorization, saslInit);
+            doEncodePlainProtocolHeader(traceId, authorization);
+            connectionState = connectionState.sentHeader();
+            doEncodeOpen(traceId, authorization);
+            connectionState = connectionState.sentOpen();
         }
 
         private boolean isProtocolHeaderValid(
@@ -2431,10 +2431,6 @@ public final class AmqpServerFactory implements StreamFactory
                 doEncodeClose(traceId, authorization, errorType, errorDescription);
                 doNetworkEnd(traceId, authorization);
                 connectionState = connectionState.sentClose();
-                if (connectionState == ERROR)
-                {
-                    onDecodeError(traceId, authorization, errorType, errorDescription);
-                }
             }
         }
 
