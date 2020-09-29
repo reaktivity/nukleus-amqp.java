@@ -2771,9 +2771,9 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization)
             {
+                links.values().forEach(l -> l.cleanup(traceId, authorization));
                 sessions.remove(incomingChannel);
                 flushReplySharedBudget(traceId);
-                links.values().forEach(l -> l.cleanup(traceId, authorization));
             }
 
             private class AmqpServerStream
