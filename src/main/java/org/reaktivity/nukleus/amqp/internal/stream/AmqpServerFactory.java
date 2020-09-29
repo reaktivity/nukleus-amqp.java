@@ -19,6 +19,7 @@ import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
+import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.DISCARDING;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.START;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpSessionState.UNMAPPED;
@@ -921,7 +922,7 @@ public final class AmqpServerFactory implements StreamFactory
             assert begin != null;
 
             server.onDecodeBegin(traceId, authorization, begin);
-            if (server.sessions.get(server.decodeChannel).sessionState == AmqpSessionState.ERROR)
+            if (server.connectionState == DISCARDING)
             {
                 server.decoder = decodeIgnoreAll;
                 break decode;
@@ -2626,9 +2627,7 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization)
             {
-                doEncodeBegin(traceId, authorization, incomingChannel, nextOutgoingId);
-                sessionState = sessionState.sentBegin();
-                assert sessionState != AmqpSessionState.ERROR;
+                doEncodeBegin(traceId, authorization);
             }
 
             private void onDecodeAttach(
@@ -2722,12 +2721,7 @@ public final class AmqpServerFactory implements StreamFactory
                 this.incomingWindow--;
                 if (incomingWindow < 0)
                 {
-                    cleanup(traceId, authorization);
-                    sessions.remove(incomingChannel);
-                    flushReplySharedBudget(traceId);
-                    doEncodeEnd(traceId, authorization, outgoingChannel, SESSION_WINDOW_VIOLATION);
-                    sessionState = sessionState.sentEnd();
-                    assert sessionState == AmqpSessionState.DISCARDING;
+                    doEncodeEnd(traceId, authorization, SESSION_WINDOW_VIOLATION);
                 }
                 else
                 {
@@ -2755,6 +2749,28 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     link.onDecodeDetach(traceId, authorization, errorType);
                 }
+            }
+
+            private void doEncodeBegin(
+                long traceId,
+                long authorization)
+            {
+                AmqpServer.this.doEncodeBegin(traceId, authorization, incomingChannel, nextOutgoingId);
+                sessionState = sessionState.sentBegin();
+                assert sessionState != AmqpSessionState.ERROR;
+            }
+
+            private void doEncodeEnd(
+                long traceId,
+                long authorization,
+                AmqpErrorType errorType)
+            {
+                cleanup(traceId, authorization);
+                sessions.remove(incomingChannel);
+                flushReplySharedBudget(traceId);
+                AmqpServer.this.doEncodeEnd(traceId, authorization, outgoingChannel, errorType);
+                sessionState = sessionState.sentEnd();
+                assert sessionState == AmqpSessionState.DISCARDING;
             }
 
             private void cleanup(
