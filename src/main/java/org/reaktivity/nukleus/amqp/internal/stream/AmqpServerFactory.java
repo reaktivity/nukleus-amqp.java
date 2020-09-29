@@ -2385,6 +2385,7 @@ public final class AmqpServerFactory implements StreamFactory
                     break decode;
                 }
                 session.doEncodeEnd(traceId, authorization, errorType);
+                session.cleanup(traceId, authorization);
             }
         }
 
@@ -2717,6 +2718,7 @@ public final class AmqpServerFactory implements StreamFactory
                 if (incomingWindow < 0)
                 {
                     doEncodeEnd(traceId, authorization, SESSION_WINDOW_VIOLATION);
+                    cleanup(traceId, authorization);
                 }
                 else
                 {
@@ -2760,9 +2762,6 @@ public final class AmqpServerFactory implements StreamFactory
                 long authorization,
                 AmqpErrorType errorType)
             {
-                cleanup(traceId, authorization);
-                sessions.remove(incomingChannel);
-                flushReplySharedBudget(traceId);
                 AmqpServer.this.doEncodeEnd(traceId, authorization, outgoingChannel, errorType);
                 sessionState = sessionState.sentEnd();
                 assert sessionState != AmqpSessionState.ERROR;
@@ -2772,6 +2771,8 @@ public final class AmqpServerFactory implements StreamFactory
                 long traceId,
                 long authorization)
             {
+                sessions.remove(incomingChannel);
+                flushReplySharedBudget(traceId);
                 links.values().forEach(l -> l.cleanup(traceId, authorization));
             }
 
