@@ -2384,12 +2384,7 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     break decode;
                 }
-                session.cleanup(traceId, authorization);
-                sessions.remove(decodeChannel);
-                flushReplySharedBudget(traceId);
-                doEncodeEnd(traceId, authorization, session.outgoingChannel, errorType);
-                session.sessionState = session.sessionState.sentEnd();
-                assert session.sessionState != AmqpSessionState.ERROR;
+                session.doEncodeEnd(traceId, authorization, errorType);
             }
         }
 
@@ -2770,7 +2765,7 @@ public final class AmqpServerFactory implements StreamFactory
                 flushReplySharedBudget(traceId);
                 AmqpServer.this.doEncodeEnd(traceId, authorization, outgoingChannel, errorType);
                 sessionState = sessionState.sentEnd();
-                assert sessionState == AmqpSessionState.DISCARDING;
+                assert sessionState != AmqpSessionState.ERROR;
             }
 
             private void cleanup(
