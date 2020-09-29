@@ -21,6 +21,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.START;
+import static org.reaktivity.nukleus.amqp.internal.stream.AmqpSessionState.UNMAPPED;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.aborted;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.batchable;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.isSettled;
@@ -913,14 +914,20 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpPerformativeFW performative = amqpPerformativeRO.tryWrap(buffer, offset, limit);
         int progress = offset;
 
+        decode:
         if (performative != null)
         {
             final AmqpBeginFW begin = performative.begin();
             assert begin != null;
 
             server.onDecodeBegin(traceId, authorization, begin);
-            server.decoder = decodePlainFrame;
+            if (server.sessions.get(server.decodeChannel).sessionState == AmqpSessionState.ERROR)
+            {
+                server.decoder = decodeIgnoreAll;
+                break decode;
+            }
 
+            server.decoder = decodePlainFrame;
             progress = begin.limit();
         }
 
@@ -2272,14 +2279,22 @@ public final class AmqpServerFactory implements StreamFactory
             else
             {
                 AmqpSession session = sessions.computeIfAbsent(decodeChannel, AmqpSession::new);
-                session.outgoingChannel(outgoingChannel);
-                session.nextIncomingId((int) begin.nextOutgoingId());
-                session.incomingWindow(writeBuffer.capacity());
-                session.outgoingWindow(outgoingWindow);
-                session.remoteIncomingWindow((int) begin.incomingWindow());
-                session.remoteOutgoingWindow((int) begin.outgoingWindow());
-                session.onDecodeBegin(traceId, authorization);
-                this.outgoingChannel++;
+                session.sessionState = session.sessionState.receivedBegin();
+                if (session.sessionState == AmqpSessionState.ERROR)
+                {
+                    onDecodeError(traceId, authorization, ILLEGAL_STATE, null);
+                }
+                else
+                {
+                    session.outgoingChannel(outgoingChannel);
+                    session.nextIncomingId((int) begin.nextOutgoingId());
+                    session.incomingWindow(writeBuffer.capacity());
+                    session.outgoingWindow(outgoingWindow);
+                    session.remoteIncomingWindow((int) begin.incomingWindow());
+                    session.remoteOutgoingWindow((int) begin.outgoingWindow());
+                    session.onDecodeBegin(traceId, authorization);
+                    this.outgoingChannel++;
+                }
             }
         }
 
@@ -2360,12 +2375,20 @@ public final class AmqpServerFactory implements StreamFactory
                 errorType = end.error().errorList().condition();
             }
             AmqpSession session = sessions.get(decodeChannel);
+            decode:
             if (session != null)
             {
+                session.sessionState = session.sessionState.receivedEnd();
+                if (session.sessionState == AmqpSessionState.ERROR)
+                {
+                    break decode;
+                }
                 session.cleanup(traceId, authorization);
                 sessions.remove(decodeChannel);
                 flushReplySharedBudget(traceId);
                 doEncodeEnd(traceId, authorization, session.outgoingChannel, errorType);
+                session.sessionState = session.sessionState.sentEnd();
+                assert session.sessionState != AmqpSessionState.ERROR;
             }
         }
 
@@ -2552,12 +2575,15 @@ public final class AmqpServerFactory implements StreamFactory
             private int remoteIncomingWindow;
             private int remoteOutgoingWindow;
 
+            private AmqpSessionState sessionState;
+
             private AmqpSession(
                 int incomingChannel)
             {
                 this.links = new Long2ObjectHashMap<>();
                 this.incomingChannel = incomingChannel;
                 this.nextOutgoingId++;
+                this.sessionState = UNMAPPED;
             }
 
             private void outgoingChannel(
@@ -2601,6 +2627,8 @@ public final class AmqpServerFactory implements StreamFactory
                 long authorization)
             {
                 doEncodeBegin(traceId, authorization, incomingChannel, nextOutgoingId);
+                sessionState = sessionState.sentBegin();
+                assert sessionState != AmqpSessionState.ERROR;
             }
 
             private void onDecodeAttach(
@@ -2698,6 +2726,8 @@ public final class AmqpServerFactory implements StreamFactory
                     sessions.remove(incomingChannel);
                     flushReplySharedBudget(traceId);
                     doEncodeEnd(traceId, authorization, outgoingChannel, SESSION_WINDOW_VIOLATION);
+                    sessionState = sessionState.sentEnd();
+                    assert sessionState == AmqpSessionState.DISCARDING;
                 }
                 else
                 {
