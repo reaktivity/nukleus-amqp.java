@@ -1224,7 +1224,6 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRO.tryWrap(buffer, offset, limit);
             if (frameHeader == null)
             {
-                progress = server.onDecodeEmptyFrame(buffer, offset, limit);
                 break decode;
             }
 
