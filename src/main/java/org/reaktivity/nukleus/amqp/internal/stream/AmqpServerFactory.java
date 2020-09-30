@@ -744,7 +744,6 @@ public final class AmqpServerFactory implements StreamFactory
             if (session != null && session.sessionState == AmqpSessionState.DISCARDING && descriptor != END)
             {
                 server.decoder = decodeIgnorePlainFrame;
-                progress = (int) (offset + frameSize);
                 break decode;
             }
 
@@ -1215,8 +1214,26 @@ public final class AmqpServerFactory implements StreamFactory
         int offset,
         int limit)
     {
-        server.decoder = decodePlainFrame;
-        return offset;
+        final int length = limit - offset;
+
+        int progress = offset;
+
+        decode:
+        if (length != 0)
+        {
+            final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRO.tryWrap(buffer, offset, limit);
+            if (frameHeader == null)
+            {
+                progress = server.onDecodeEmptyFrame(buffer, offset, limit);
+                break decode;
+            }
+
+            final long frameSize = frameHeader.size();
+            progress = (int) (offset + frameSize);
+            server.decoder = decodePlainFrame;
+        }
+
+        return progress;
     }
 
     private int decodeUnknownType(
