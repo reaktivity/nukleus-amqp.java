@@ -22,6 +22,8 @@ import static java.util.Objects.requireNonNull;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.DISCARDING;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.START;
+import static org.reaktivity.nukleus.amqp.internal.stream.AmqpSessionState.END_RCVD;
+import static org.reaktivity.nukleus.amqp.internal.stream.AmqpSessionState.MAPPED;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpSessionState.UNMAPPED;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.aborted;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.batchable;
@@ -736,6 +738,15 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpDescribedType descriptor = performative.kind();
             final AmqpServerDecoder decoder = decodersByPerformative.getOrDefault(descriptor, decodeUnknownType);
             server.decodeChannel = frameHeader.channel();
+
+            if (server.sessions.get(server.decodeChannel) != null &&
+                server.sessions.get(server.decodeChannel).sessionState == AmqpSessionState.DISCARDING &&
+                descriptor != END)
+            {
+                progress = limit;
+                break decode;
+            }
+
             server.decodableBodyBytes = frameSize - frameHeader.doff() * 4;
             server.decoder = decoder;
             server.readIdleTimeout = defaultIdleTimeout;
@@ -2384,7 +2395,7 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     break decode;
                 }
-                session.doEncodeEnd(traceId, authorization, errorType);
+                session.doEncodeEndIfNecessary(traceId, authorization, errorType);
                 session.cleanup(traceId, authorization);
             }
         }
@@ -2717,8 +2728,7 @@ public final class AmqpServerFactory implements StreamFactory
                 this.incomingWindow--;
                 if (incomingWindow < 0)
                 {
-                    doEncodeEnd(traceId, authorization, SESSION_WINDOW_VIOLATION);
-                    cleanup(traceId, authorization);
+                    doEncodeEndIfNecessary(traceId, authorization, SESSION_WINDOW_VIOLATION);
                 }
                 else
                 {
@@ -2757,14 +2767,16 @@ public final class AmqpServerFactory implements StreamFactory
                 assert sessionState != AmqpSessionState.ERROR;
             }
 
-            private void doEncodeEnd(
+            private void doEncodeEndIfNecessary(
                 long traceId,
                 long authorization,
                 AmqpErrorType errorType)
             {
-                AmqpServer.this.doEncodeEnd(traceId, authorization, outgoingChannel, errorType);
-                sessionState = sessionState.sentEnd();
-                assert sessionState != AmqpSessionState.ERROR;
+                if (sessionState == MAPPED || sessionState == END_RCVD)
+                {
+                    AmqpServer.this.doEncodeEnd(traceId, authorization, outgoingChannel, errorType);
+                    sessionState = sessionState.sentEnd();
+                }
             }
 
             private void cleanup(
