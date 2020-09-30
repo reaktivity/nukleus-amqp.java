@@ -739,9 +739,8 @@ public final class AmqpServerFactory implements StreamFactory
             final AmqpServerDecoder decoder = decodersByPerformative.getOrDefault(descriptor, decodeUnknownType);
             server.decodeChannel = frameHeader.channel();
 
-            if (server.sessions.get(server.decodeChannel) != null &&
-                server.sessions.get(server.decodeChannel).sessionState == AmqpSessionState.DISCARDING &&
-                descriptor != END)
+            AmqpServer.AmqpSession session = server.sessions.get(server.decodeChannel);
+            if (session != null && session.sessionState == AmqpSessionState.DISCARDING && descriptor != END)
             {
                 progress = limit;
                 break decode;
