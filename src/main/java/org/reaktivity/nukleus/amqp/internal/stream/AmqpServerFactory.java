@@ -366,6 +366,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeClose = this::decodeClose;
     private final AmqpServerDecoder decodeSaslInit = this::decodeSaslInit;
     private final AmqpServerDecoder decodeIgnoreAll = this::decodeIgnoreAll;
+    private final AmqpServerDecoder decodeIgnorePlainFrame = this::decodeIgnorePlainFrame;
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
 
     private final int outgoingWindow;
@@ -742,7 +743,8 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpServer.AmqpSession session = server.sessions.get(server.decodeChannel);
             if (session != null && session.sessionState == AmqpSessionState.DISCARDING && descriptor != END)
             {
-                progress = limit;
+                server.decoder = decodeIgnorePlainFrame;
+                progress = (int) (offset + frameSize);
                 break decode;
             }
 
@@ -1202,6 +1204,19 @@ public final class AmqpServerFactory implements StreamFactory
         int limit)
     {
         return limit;
+    }
+
+    private int decodeIgnorePlainFrame(
+        AmqpServer server,
+        long traceId,
+        long authorization,
+        long budgetId,
+        DirectBuffer buffer,
+        int offset,
+        int limit)
+    {
+        server.decoder = decodePlainFrame;
+        return offset;
     }
 
     private int decodeUnknownType(
