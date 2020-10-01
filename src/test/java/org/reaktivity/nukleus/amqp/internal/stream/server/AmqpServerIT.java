@@ -1374,4 +1374,15 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/discard.after.end/client",
+        "${server}/incoming.window.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
+    public void shouldDiscardInboundAfterOutboundEnd() throws Exception
+    {
+        k3po.finish();
+    }
 }

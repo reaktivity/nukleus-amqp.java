@@ -694,17 +694,17 @@ scope protocol
             AmqpBinary additionalData;
         }
 
-        union AmqpPerformative switch (AmqpDescribedType)
+        enum AmqpPerformativeType (AmqpDescriptor)
         {
-            case OPEN: AmqpOpen open;
-            case BEGIN: AmqpBegin begin;
-            case ATTACH: AmqpAttach attach;
-            case FLOW: AmqpFlow flow;
-            case TRANSFER: AmqpTransfer transfer;
-            case DISPOSITION: AmqpDisposition disposition;
-            case DETACH: AmqpDetach detach;
-            case END: AmqpEnd end;
-            case CLOSE: AmqpClose close;
+            OPEN (0x10L),
+            BEGIN (0x11L),
+            ATTACH (0x12L),
+            FLOW (0x13L),
+            TRANSFER (0x14L),
+            DISPOSITION (0x15L),
+            DETACH (0x16L),
+            END (0x17L),
+            CLOSE (0x18L)
         }
 
         union AmqpSecurity switch (AmqpDescribedType)
@@ -722,7 +722,6 @@ scope protocol
             uint8 doff;
             uint8 type;
             uint16 channel;
-            AmqpPerformative performative;
         }
 
         struct AmqpSaslFrameHeader
