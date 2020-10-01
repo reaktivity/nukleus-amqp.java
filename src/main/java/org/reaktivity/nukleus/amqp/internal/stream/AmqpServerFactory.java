@@ -22,6 +22,7 @@ import static java.util.Objects.requireNonNull;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.DISCARDING;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.START;
+import static org.reaktivity.nukleus.amqp.internal.stream.AmqpSessionState.END_RCVD;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpSessionState.UNMAPPED;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.aborted;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.batchable;
@@ -55,6 +56,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LIN
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_ERRANT_LINK;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW.DEFAULT_VALUE_MAX_FRAME_SIZE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpReceiverSettleMode.FIRST;
@@ -2384,7 +2386,10 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     break decode;
                 }
-                session.doEncodeEnd(traceId, authorization, errorType);
+                if (session.sessionState == END_RCVD)
+                {
+                    session.doEncodeEnd(traceId, authorization, errorType);
+                }
                 session.cleanup(traceId, authorization);
             }
         }
@@ -2560,6 +2565,7 @@ public final class AmqpServerFactory implements StreamFactory
         private final class AmqpSession
         {
             private final Long2ObjectHashMap<AmqpServerStream> links;
+            private final Long2ObjectHashMap<AmqpServerStream> destroyedLinks;
             private final int incomingChannel;
 
             private long deliveryId = NO_DELIVERY_ID;
@@ -2578,6 +2584,7 @@ public final class AmqpServerFactory implements StreamFactory
                 int incomingChannel)
             {
                 this.links = new Long2ObjectHashMap<>();
+                this.destroyedLinks = new Long2ObjectHashMap<>();
                 this.incomingChannel = incomingChannel;
                 this.nextOutgoingId++;
                 this.sessionState = UNMAPPED;
@@ -2626,15 +2633,27 @@ public final class AmqpServerFactory implements StreamFactory
                 doEncodeBegin(traceId, authorization);
             }
 
+            private void onDecodeError(
+                long traceId,
+                long authorization,
+                AmqpErrorType errorType)
+            {
+                doEncodeEnd(traceId, authorization, errorType);
+            }
+
             private void onDecodeAttach(
                 long traceId,
                 long authorization,
                 AmqpAttachFW attach)
             {
-                final long linkKey = attach.handle();
-                if (links.containsKey(linkKey))
+                final long handle = attach.handle();
+                if (links.containsKey(handle))
                 {
-                    onDecodeError(traceId, authorization, NOT_ALLOWED, null);
+                    AmqpServer.this.onDecodeError(traceId, authorization, NOT_ALLOWED, null);
+                }
+                else if (destroyedLinks.containsKey(handle))
+                {
+                    onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
                 }
                 else
                 {
@@ -2667,7 +2686,7 @@ public final class AmqpServerFactory implements StreamFactory
                         String addressTo = targetAddress != null ? targetAddress.asString() : null;
 
                         AmqpServerStream link = new AmqpServerStream(addressFrom, addressTo, role, route);
-                        AmqpServerStream oldLink = links.put(linkKey, link);
+                        AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
                         link.onDecodeAttach(traceId, authorization, attach);
                     }
@@ -2940,15 +2959,7 @@ public final class AmqpServerFactory implements StreamFactory
                     long authorization,
                     AmqpErrorType errorType)
                 {
-                    if (errorType == null)
-                    {
-                        doApplicationEnd(traceId, authorization, EMPTY_OCTETS);
-                    }
-                    else
-                    {
-                        cleanup(traceId, authorization);
-                        // TODO: support abortEx
-                    }
+                    doApplicationEnd(traceId, authorization, EMPTY_OCTETS);
                 }
 
                 private void onDecodeError(
@@ -3373,6 +3384,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final long authorization = end.authorization();
 
                     doEncodeDetach(traceId, authorization, null, decodeChannel, handle);
+                    cleanup(traceId, authorization);
                 }
 
                 private void onApplicationAbort(
@@ -3395,6 +3407,7 @@ public final class AmqpServerFactory implements StreamFactory
                     setInitialClosed();
                     capabilities = 0;
                     links.remove(handle);
+                    destroyedLinks.put(handle, this);
 
                     doEnd(application, newRouteId, initialId, traceId, authorization, extension);
                 }

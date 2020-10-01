@@ -1374,4 +1374,14 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/session/reject.errant.links/client",
+        "${server}/disconnect/server" })
+    public void shouldRejectErrantLinks() throws Exception
+    {
+        k3po.finish();
+    }
 }
