@@ -783,7 +783,7 @@ public final class AmqpServerFactory implements StreamFactory
                 break decode;
             }
 
-            server.decodableBodyBytes = frameSize - frameHeader.doff() * 4;
+            server.decodableBodyBytes = (int) (frameSize - frameHeader.doff() * 4);
             server.decodeChannel = frameHeader.channel();
             server.decoder = decodePerformative;
             server.readIdleTimeout = defaultIdleTimeout;
@@ -1110,7 +1110,7 @@ public final class AmqpServerFactory implements StreamFactory
                 }
                 server.decodableBodyBytes -= transfer.sizeof();
                 final int fragmentOffset = transfer.limit();
-                final int fragmentSize = (int) server.decodableBodyBytes;
+                final int fragmentSize = server.decodableBodyBytes;
                 final int fragmentLimit = fragmentOffset + fragmentSize;
 
                 assert fragmentLimit <= limit;
@@ -1284,7 +1284,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         if (length != 0)
         {
-            progress = Math.min((int) (offset + server.decodableBodyBytes), limit);
+            progress = Math.min(offset + server.decodableBodyBytes, limit);
             server.decodableBodyBytes -= progress - offset;
             assert server.decodableBodyBytes >= 0;
             if (server.decodableBodyBytes == 0)
@@ -1341,7 +1341,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         private int decodeChannel;
         private int outgoingChannel;
-        private long decodableBodyBytes;
+        private int decodableBodyBytes;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long writeIdleTimeout = DEFAULT_IDLE_TIMEOUT;
