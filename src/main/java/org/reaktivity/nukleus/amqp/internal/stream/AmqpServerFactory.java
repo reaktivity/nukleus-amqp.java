@@ -175,7 +175,7 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int FLAG_INIT = 2;
     private static final int FLAG_INIT_AND_FIN = 3;
     private static final int FRAME_HEADER_SIZE = 8;
-    private static final int PERFORMATIVE_SIZE = 3;
+    private static final int SASL_DESCRIPTOR_SIZE = 3;
     private static final int MIN_MAX_FRAME_SIZE = 512;
     private static final int TRANSFER_HEADER_SIZE = 20;
     private static final int PAYLOAD_HEADER_SIZE = 205;
@@ -826,7 +826,8 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             server.decoder = decodersByPerformativeType.getOrDefault(descriptor, decodeUnknownType);
-            server.decodableBodyBytes -= PERFORMATIVE_SIZE;
+            server.decodableBodyBytes -= performativeType.sizeof();
+            assert server.decodableBodyBytes >= 0;
             progress = performativeType.limit();
         }
         else
@@ -1343,7 +1344,7 @@ public final class AmqpServerFactory implements StreamFactory
         private int outgoingChannel;
         private int decodableBodyBytes;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
-        private long encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
+        private int encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long writeIdleTimeout = DEFAULT_IDLE_TIMEOUT;
         private long readIdleTimeout = DEFAULT_IDLE_TIMEOUT;
 
@@ -1421,12 +1422,12 @@ public final class AmqpServerFactory implements StreamFactory
                 .build();
 
             final AmqpSaslMechanismsFW saslMechanisms =
-                amqpSaslMechanismsRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                amqpSaslMechanismsRW.wrap(frameBuffer, FRAME_HEADER_SIZE + SASL_DESCRIPTOR_SIZE, frameBuffer.capacity())
                     .mechanisms(annonymousRO)
                     .build();
 
             final AmqpSaslFrameHeaderFW saslFrameHeader = amqpSaslFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
-                .size(FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + saslMechanisms.sizeof())
+                .size(FRAME_HEADER_SIZE + SASL_DESCRIPTOR_SIZE + saslMechanisms.sizeof())
                 .security(b -> b.saslMechanisms(saslMechanisms))
                 .build();
 
@@ -1440,13 +1441,13 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpSaslInitFW saslInit)
         {
             final AmqpSaslOutcomeFW saslOutcome =
-                amqpSaslOutcomeRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                amqpSaslOutcomeRW.wrap(frameBuffer, FRAME_HEADER_SIZE + SASL_DESCRIPTOR_SIZE, frameBuffer.capacity())
                     .code(OK)
                     .build();
 
             final AmqpSaslFrameHeaderFW saslFrameHeader =
                 amqpSaslFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
-                    .size(FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + saslOutcome.sizeof())
+                    .size(FRAME_HEADER_SIZE + SASL_DESCRIPTOR_SIZE + saslOutcome.sizeof())
                     .security(b -> b.saslOutcome(saslOutcome))
                     .build();
 
@@ -1465,8 +1466,11 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization)
         {
+            final int performativeSize = openType.sizeof();
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, openType.buffer(), 0, performativeSize);
+
             final AmqpOpenFW.Builder builder =
-                amqpOpenRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                amqpOpenRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                     .containerId(containerId);
 
             if (decodeMaxFrameSize != DEFAULT_VALUE_MAX_FRAME_SIZE)
@@ -1480,7 +1484,8 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             final AmqpOpenFW open = builder.build();
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + open.sizeof();
+
+            final int size = FRAME_HEADER_SIZE + performativeSize + open.sizeof();
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
                 .size(size)
@@ -1489,7 +1494,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(0)
                 .build();
 
-            frameBuffer.putBytes(frameHeader.limit(), openType.buffer(), 0, PERFORMATIVE_SIZE);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -1503,14 +1508,17 @@ public final class AmqpServerFactory implements StreamFactory
             int remoteChannel,
             int nextOutgoingId)
         {
-            final AmqpBeginFW begin = amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+            final int performativeSize = beginType.sizeof();
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, beginType.buffer(), 0, performativeSize);
+
+            final AmqpBeginFW begin = amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                 .remoteChannel(remoteChannel)
                 .nextOutgoingId(nextOutgoingId)
                 .incomingWindow(bufferPool.slotCapacity())
                 .outgoingWindow(outgoingWindow)
                 .build();
 
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + begin.sizeof();
+            final int size = FRAME_HEADER_SIZE + performativeSize + begin.sizeof();
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
                 .size(size)
@@ -1519,7 +1527,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(outgoingChannel)
                 .build();
 
-            frameBuffer.putBytes(frameHeader.limit(), beginType.buffer(), 0, PERFORMATIVE_SIZE);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -1540,8 +1548,11 @@ public final class AmqpServerFactory implements StreamFactory
             StringFW addressTo,
             long deliveryCount)
         {
+            final int performativeSize = attachType.sizeof();
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, attachType.buffer(), 0, performativeSize);
+
             AmqpAttachFW.Builder builder =
-                amqpAttachRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                amqpAttachRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                     .name(amqpStringRW.wrap(stringBuffer, 0, stringBuffer.capacity()).set(name, UTF_8).build().get())
                     .handle(handle)
                     .role(role)
@@ -1585,7 +1596,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             final AmqpAttachFW attach = builder.build();
 
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + attach.sizeof();
+            final int size = FRAME_HEADER_SIZE + performativeSize + attach.sizeof();
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
                 .size(size)
@@ -1594,7 +1605,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(channel)
                 .build();
 
-            frameBuffer.putBytes(frameHeader.limit(), attachType.buffer(), 0, PERFORMATIVE_SIZE);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -1613,7 +1624,10 @@ public final class AmqpServerFactory implements StreamFactory
             long deliveryCount,
             int linkCredit)
         {
-            final AmqpFlowFW flow = amqpFlowRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+            final int performativeSize = flowType.sizeof();
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, flowType.buffer(), 0, performativeSize);
+
+            final AmqpFlowFW flow = amqpFlowRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                 .nextIncomingId(nextIncomingId)
                 .incomingWindow(incomingWindow)
                 .nextOutgoingId(nextOutgoingId)
@@ -1623,7 +1637,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .linkCredit(linkCredit)
                 .build();
 
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + flow.sizeof();
+            final int size = FRAME_HEADER_SIZE + performativeSize + flow.sizeof();
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
                 .size(size)
@@ -1632,7 +1646,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(channel)
                 .build();
 
-            frameBuffer.putBytes(frameHeader.limit(), flowType.buffer(), 0, PERFORMATIVE_SIZE);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -1649,7 +1663,12 @@ public final class AmqpServerFactory implements StreamFactory
             int offset,
             int length)
         {
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + transfer.sizeof() + length;
+            final int performativeSize = transferType.sizeof();
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, transferType.buffer(), 0, performativeSize);
+            frameBuffer.putBytes(FRAME_HEADER_SIZE + performativeSize, transfer.buffer(), transfer.offset(), transfer.sizeof());
+            frameBuffer.putBytes(FRAME_HEADER_SIZE + performativeSize + transfer.sizeof(), buffer, offset, length);
+
+            final int size = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + length;
             assert size <= encodeMaxFrameSize;
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
@@ -1659,10 +1678,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(channel)
                 .build();
 
-            final int frameOffset = frameHeader.limit();
-            frameBuffer.putBytes(frameOffset, transferType.buffer(), 0, PERFORMATIVE_SIZE);
-            frameBuffer.putBytes(frameOffset + PERFORMATIVE_SIZE, transfer.buffer(), transfer.offset(), transfer.sizeof());
-            frameBuffer.putBytes(frameOffset + PERFORMATIVE_SIZE + transfer.sizeof(), buffer, offset, length);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -1682,22 +1698,23 @@ public final class AmqpServerFactory implements StreamFactory
         {
             int fragmentRemaining = fragmentLimit - fragmentProgress;
 
+            final int performativeSize = transferType.sizeof();
             AmqpTransferFW transferCont = amqpTransferRW
-                    .wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                    .wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                     .handle(handle)
                     .more(1)
                     .build();
-            int fragmentSizeCont = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - PERFORMATIVE_SIZE - transferCont.sizeof();
+            int fragmentSizeCont = encodeMaxFrameSize - FRAME_HEADER_SIZE - performativeSize - transferCont.sizeof();
             while (fragmentRemaining > fragmentSizeCont)
             {
-                doEncodeTransfer(traceId, authorization, outgoingChannel, transferCont,
-                        fragmentBuffer, fragmentProgress, fragmentSizeCont);
+                doEncodeTransfer(traceId, authorization, outgoingChannel, transferCont, fragmentBuffer, fragmentProgress,
+                    fragmentSizeCont);
                 fragmentProgress += fragmentSizeCont;
                 fragmentRemaining -= fragmentSizeCont;
             }
 
             AmqpTransferFW.Builder transferFinBuilder = amqpTransferRW
-                    .wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                    .wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                     .handle(handle);
 
             if (more)
@@ -1705,14 +1722,12 @@ public final class AmqpServerFactory implements StreamFactory
                 transferFinBuilder.more(1);
             }
 
-            AmqpTransferFW transferFin = transferFinBuilder
-                    .build();
+            AmqpTransferFW transferFin = transferFinBuilder.build();
 
-            int fragmentSizeFin = (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - PERFORMATIVE_SIZE - transferFin.sizeof();
+            int fragmentSizeFin = encodeMaxFrameSize - FRAME_HEADER_SIZE - performativeSize - transferFin.sizeof();
             assert fragmentRemaining <= fragmentSizeFin;
 
-            doEncodeTransfer(traceId, authorization, channel, transferFin,
-                    fragmentBuffer, fragmentProgress, fragmentRemaining);
+            doEncodeTransfer(traceId, authorization, channel, transferFin, fragmentBuffer, fragmentProgress, fragmentRemaining);
             fragmentProgress += fragmentRemaining;
             assert fragmentProgress == fragmentLimit;
         }
@@ -1724,8 +1739,12 @@ public final class AmqpServerFactory implements StreamFactory
             int channel,
             long handle)
         {
+            final int performativeSize = detachType.sizeof();
+
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, detachType.buffer(), 0, performativeSize);
+
             final AmqpDetachFW.Builder detachRW =
-                amqpDetachRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                amqpDetachRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                     .handle(handle)
                     .closed(1);
 
@@ -1742,7 +1761,7 @@ public final class AmqpServerFactory implements StreamFactory
                 detach = detachRW.build();
             }
 
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + detach.sizeof();
+            final int size = FRAME_HEADER_SIZE + performativeSize + detach.sizeof();
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
                 .size(size)
@@ -1751,7 +1770,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(channel)
                 .build();
 
-            frameBuffer.putBytes(frameHeader.limit(), detachType.buffer(), 0, PERFORMATIVE_SIZE);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -1765,8 +1784,12 @@ public final class AmqpServerFactory implements StreamFactory
             int channel,
             AmqpErrorType errorType)
         {
+            final int performativeSize = endType.sizeof();
+
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, endType.buffer(), 0, performativeSize);
+
             final AmqpEndFW.Builder builder =
-                amqpEndRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity());
+                amqpEndRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity());
 
             AmqpEndFW end;
             if (errorType != null)
@@ -1782,7 +1805,7 @@ public final class AmqpServerFactory implements StreamFactory
                 end = builder.build();
             }
 
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + end.sizeof();
+            final int size = FRAME_HEADER_SIZE + performativeSize + end.sizeof();
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
                 .size(size)
@@ -1791,7 +1814,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(channel)
                 .build();
 
-            frameBuffer.putBytes(frameHeader.limit(), endType.buffer(), 0, PERFORMATIVE_SIZE);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -1805,8 +1828,11 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpErrorType errorType,
             StringFW errorDescription)
         {
+            final int performativeSize = closeType.sizeof();
+            frameBuffer.putBytes(FRAME_HEADER_SIZE, closeType.buffer(), 0, performativeSize);
+
             final AmqpCloseFW.Builder builder =
-                amqpCloseRW.wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity());
+                amqpCloseRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity());
 
             AmqpCloseFW close;
             if (errorType != null)
@@ -1825,7 +1851,7 @@ public final class AmqpServerFactory implements StreamFactory
                 close = builder.build();
             }
 
-            final int size = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + close.sizeof();
+            final int size = FRAME_HEADER_SIZE + performativeSize + close.sizeof();
 
             final AmqpFrameHeaderFW frameHeader = amqpFrameHeaderRW.wrap(frameBuffer, 0, frameBuffer.capacity())
                 .size(size)
@@ -1834,7 +1860,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .channel(0)
                 .build();
 
-            frameBuffer.putBytes(frameHeader.limit(), closeType.buffer(), 0, PERFORMATIVE_SIZE);
+            assert frameHeader.sizeof() == FRAME_HEADER_SIZE;
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
@@ -2078,7 +2104,7 @@ public final class AmqpServerFactory implements StreamFactory
             sessions.values().forEach(s -> minimum.value = Math.min(s.remoteIncomingWindow, minimum.value));
 
             final int replySharedBudgetMax = sessions.values().size() > 0 ?
-                (int) Math.min(minimum.value * encodeMaxFrameSize, replyBudget) : replyBudget;
+                Math.min(minimum.value * encodeMaxFrameSize, replyBudget) : replyBudget;
             final int replySharedCredit = replySharedBudgetMax - Math.max(this.replySharedBudget, 0)
                 - Math.max(encodeSlotOffset, 0);
 
@@ -2384,7 +2410,7 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpOpenFW open)
         {
             // TODO: use buffer slot capacity instead
-            this.encodeMaxFrameSize = Math.min(replySharedBudget, open.maxFrameSize());
+            this.encodeMaxFrameSize = (int) Math.min(replySharedBudget, open.maxFrameSize());
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
             if (writeIdleTimeout > 0)
             {
@@ -3402,9 +3428,10 @@ public final class AmqpServerFactory implements StreamFactory
                             deferred, extension, payload);
 
                     this.encodeBodyKind = bodyKind;
+                    final int performativeSize = transferType.sizeof();
 
                     final AmqpTransferFW.Builder transferBuilder = amqpTransferRW
-                            .wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                            .wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                             .handle(handle)
                             .deliveryId(deliveryId)
                             .deliveryTag(deliveryTag)
@@ -3421,7 +3448,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
                     final int fragmentSize = fragmentLimit - fragmentOffset;
-                    final int frameSize = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + transfer.sizeof() + fragmentSize;
+                    final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
                     if (frameSize <= encodeMaxFrameSize)
                     {
@@ -3431,7 +3458,7 @@ public final class AmqpServerFactory implements StreamFactory
                     else
                     {
                         AmqpTransferFW transferInit = amqpTransferRW
-                                .wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
+                                .wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
                                 .handle(handle)
                                 .deliveryId(deliveryId)
                                 .deliveryTag(deliveryTag)
@@ -3440,8 +3467,7 @@ public final class AmqpServerFactory implements StreamFactory
                                 .more(1)
                                 .build();
 
-                        int fragmentSizeInit =
-                            (int) encodeMaxFrameSize - FRAME_HEADER_SIZE - PERFORMATIVE_SIZE - transferInit.sizeof();
+                        int fragmentSizeInit = encodeMaxFrameSize - FRAME_HEADER_SIZE - performativeSize - transferInit.sizeof();
                         int fragmentProgress = fragmentOffset;
 
                         doEncodeTransfer(traceId, authorization, outgoingChannel,
@@ -3465,9 +3491,10 @@ public final class AmqpServerFactory implements StreamFactory
 
                     OctetsFW messageFragment = amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
 
+                    final int performativeSize = transferType.sizeof();
                     final AmqpTransferFW.Builder transferBuilder = amqpTransferRW
-                            .wrap(frameBuffer, FRAME_HEADER_SIZE + PERFORMATIVE_SIZE, frameBuffer.capacity())
-                            .handle(handle);
+                        .wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
+                        .handle(handle);
 
                     if (more)
                     {
@@ -3479,7 +3506,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
                     final int fragmentSize = fragmentLimit - fragmentOffset;
-                    final int frameSize = FRAME_HEADER_SIZE + PERFORMATIVE_SIZE + transfer.sizeof() + fragmentSize;
+                    final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
                     if (frameSize <= encodeMaxFrameSize)
                     {
@@ -3535,11 +3562,11 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     if (AmqpState.replyOpened(state))
                     {
-                        final int maxFrameSize = (int) encodeMaxFrameSize;
+                        final int maxFrameSize = encodeMaxFrameSize;
                         final int slotCapacity = bufferPool.slotCapacity();
                         final int maxFrameCount = (slotCapacity + maxFrameSize - 1) / maxFrameSize;
                         final int padding = PAYLOAD_HEADER_SIZE + (TRANSFER_HEADER_SIZE * maxFrameCount);
-                        final int newReplyBudget = (int) (linkCredit * encodeMaxFrameSize);
+                        final int newReplyBudget = linkCredit * encodeMaxFrameSize;
                         final int credit = newReplyBudget - replyBudget;
                         if (credit > 0)
                         {
