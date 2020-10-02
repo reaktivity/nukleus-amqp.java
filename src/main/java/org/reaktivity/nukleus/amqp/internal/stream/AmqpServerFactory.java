@@ -2796,8 +2796,14 @@ public final class AmqpServerFactory implements StreamFactory
                 AmqpAttachFW attach)
             {
                 final long handle = attach.handle();
+                decode:
                 if (links.containsKey(handle))
                 {
+                    if (links.get(handle).detachError != null)
+                    {
+                        onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
+                        break decode;
+                    }
                     AmqpServer.this.onDecodeError(traceId, authorization, NOT_ALLOWED, null);
                 }
                 else
@@ -2825,7 +2831,6 @@ public final class AmqpServerFactory implements StreamFactory
                         throw new IllegalStateException("Unexpected value: " + role);
                     }
 
-                    decode:
                     if (route != null)
                     {
                         String addressFrom = sourceAddress != null ? sourceAddress.asString() : null;
@@ -2834,11 +2839,6 @@ public final class AmqpServerFactory implements StreamFactory
                         AmqpServerStream link = new AmqpServerStream(addressFrom, addressTo, role, route);
                         AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
-                        if (link.detachError)
-                        {
-                            onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
-                            break decode;
-                        }
                         link.onDecodeAttach(traceId, authorization, attach);
                     }
                     else
@@ -2870,7 +2870,7 @@ public final class AmqpServerFactory implements StreamFactory
                 if (flow.hasHandle())
                 {
                     AmqpServerStream attachedLink = links.get(flow.handle());
-                    if (attachedLink.detachError)
+                    if (attachedLink.detachError != null)
                     {
                         onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
                         break decode;
@@ -2891,7 +2891,7 @@ public final class AmqpServerFactory implements StreamFactory
                 this.nextIncomingId++;
                 this.remoteOutgoingWindow--;
                 this.incomingWindow--;
-                if (links.get(transfer.handle()).detachError)
+                if (links.get(transfer.handle()).detachError != null)
                 {
                     onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
                 }
@@ -2988,7 +2988,7 @@ public final class AmqpServerFactory implements StreamFactory
                 private StringFW addressFrom;
                 private StringFW addressTo;
 
-                private boolean detachError;
+                private AmqpErrorType detachError;
 
                 private AmqpBodyKind encodeBodyKind;
                 private AmqpBodyKind decodeBodyKind;
@@ -3010,7 +3010,6 @@ public final class AmqpServerFactory implements StreamFactory
                     this.initialId = supplyInitialId.applyAsLong(newRouteId);
                     this.replyId = supplyReplyId.applyAsLong(initialId);
                     this.application = router.supplyReceiver(initialId);
-                    this.detachError = false;
                 }
 
                 private void onDecodeAttach(
@@ -3133,7 +3132,7 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpErrorType errorType)
                 {
                     doEncodeDetach(traceId, authorization, errorType, outgoingChannel, handle);
-                    this.detachError = true;
+                    this.detachError = errorType;
                     doApplicationAbortIfNecessary(traceId, authorization);
                 }
 
