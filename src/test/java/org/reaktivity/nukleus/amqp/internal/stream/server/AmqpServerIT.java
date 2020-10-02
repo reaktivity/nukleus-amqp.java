@@ -1389,8 +1389,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/session/reject.errant.links/client",
-        "${server}/disconnect/server" })
+        "${client}/session/reject.errant.link/client",
+        "${server}/link.credit.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "8192")
     public void shouldRejectErrantLinks() throws Exception
     {
         k3po.finish();

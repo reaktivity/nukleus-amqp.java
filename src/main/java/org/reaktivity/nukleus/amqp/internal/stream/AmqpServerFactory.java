@@ -2715,7 +2715,6 @@ public final class AmqpServerFactory implements StreamFactory
         private final class AmqpSession
         {
             private final Long2ObjectHashMap<AmqpServerStream> links;
-            private final Long2ObjectHashMap<AmqpServerStream> destroyedLinks;
             private final int incomingChannel;
 
             private long deliveryId = NO_DELIVERY_ID;
@@ -2734,7 +2733,6 @@ public final class AmqpServerFactory implements StreamFactory
                 int incomingChannel)
             {
                 this.links = new Long2ObjectHashMap<>();
-                this.destroyedLinks = new Long2ObjectHashMap<>();
                 this.incomingChannel = incomingChannel;
                 this.nextOutgoingId++;
                 this.sessionState = UNMAPPED;
@@ -2789,6 +2787,7 @@ public final class AmqpServerFactory implements StreamFactory
                 AmqpErrorType errorType)
             {
                 doEncodeEndIfNecessary(traceId, authorization, errorType);
+                cleanup(traceId, authorization);
             }
 
             private void onDecodeAttach(
@@ -2800,10 +2799,6 @@ public final class AmqpServerFactory implements StreamFactory
                 if (links.containsKey(handle))
                 {
                     AmqpServer.this.onDecodeError(traceId, authorization, NOT_ALLOWED, null);
-                }
-                else if (destroyedLinks.containsKey(handle))
-                {
-                    onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
                 }
                 else
                 {
@@ -2830,6 +2825,7 @@ public final class AmqpServerFactory implements StreamFactory
                         throw new IllegalStateException("Unexpected value: " + role);
                     }
 
+                    decode:
                     if (route != null)
                     {
                         String addressFrom = sourceAddress != null ? sourceAddress.asString() : null;
@@ -2838,6 +2834,11 @@ public final class AmqpServerFactory implements StreamFactory
                         AmqpServerStream link = new AmqpServerStream(addressFrom, addressTo, role, route);
                         AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
+                        if (link.detachError)
+                        {
+                            onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
+                            break decode;
+                        }
                         link.onDecodeAttach(traceId, authorization, attach);
                     }
                     else
@@ -2865,9 +2866,15 @@ public final class AmqpServerFactory implements StreamFactory
 
                 flushReplySharedBudget(traceId);
 
+                decode:
                 if (flow.hasHandle())
                 {
                     AmqpServerStream attachedLink = links.get(flow.handle());
+                    if (attachedLink.detachError)
+                    {
+                        onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
+                        break decode;
+                    }
                     attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit());
                 }
             }
@@ -2884,7 +2891,11 @@ public final class AmqpServerFactory implements StreamFactory
                 this.nextIncomingId++;
                 this.remoteOutgoingWindow--;
                 this.incomingWindow--;
-                if (incomingWindow < 0)
+                if (links.get(transfer.handle()).detachError)
+                {
+                    onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
+                }
+                else if (incomingWindow < 0)
                 {
                     doEncodeEndIfNecessary(traceId, authorization, SESSION_WINDOW_VIOLATION);
                 }
@@ -2977,6 +2988,8 @@ public final class AmqpServerFactory implements StreamFactory
                 private StringFW addressFrom;
                 private StringFW addressTo;
 
+                private boolean detachError;
+
                 private AmqpBodyKind encodeBodyKind;
                 private AmqpBodyKind decodeBodyKind;
 
@@ -2997,6 +3010,7 @@ public final class AmqpServerFactory implements StreamFactory
                     this.initialId = supplyInitialId.applyAsLong(newRouteId);
                     this.replyId = supplyReplyId.applyAsLong(initialId);
                     this.application = router.supplyReceiver(initialId);
+                    this.detachError = false;
                 }
 
                 private void onDecodeAttach(
@@ -3110,7 +3124,7 @@ public final class AmqpServerFactory implements StreamFactory
                     long authorization,
                     AmqpErrorType errorType)
                 {
-                    doApplicationEnd(traceId, authorization, EMPTY_OCTETS);
+                    doApplicationEndIfNecessary(traceId, authorization, EMPTY_OCTETS);
                 }
 
                 private void onDecodeError(
@@ -3119,7 +3133,8 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpErrorType errorType)
                 {
                     doEncodeDetach(traceId, authorization, errorType, outgoingChannel, handle);
-                    cleanup(traceId, authorization);
+                    this.detachError = true;
+                    doApplicationAbortIfNecessary(traceId, authorization);
                 }
 
                 private void doApplicationBeginIfNecessary(
@@ -3560,9 +3575,19 @@ public final class AmqpServerFactory implements StreamFactory
                     setInitialClosed();
                     capabilities = 0;
                     links.remove(handle);
-                    destroyedLinks.put(handle, this);
 
                     doEnd(application, newRouteId, initialId, traceId, authorization, extension);
+                }
+
+                private void doApplicationEndIfNecessary(
+                    long traceId,
+                    long authorization,
+                    Flyweight extension)
+                {
+                    if (!AmqpState.initialClosed(state))
+                    {
+                        doApplicationEnd(traceId, authorization, extension);
+                    }
                 }
 
                 private void flushReplyWindow(
