@@ -174,6 +174,7 @@ public final class AmqpServerFactory implements StreamFactory
 
     private static final int FLAG_FIN = 1;
     private static final int FLAG_INIT = 2;
+    private static final int FLAG_INCOMPLETE = 4;
     private static final int FLAG_INIT_AND_FIN = 3;
     private static final int FRAME_HEADER_SIZE = 8;
     private static final int SASL_DESCRIPTOR_SIZE = 3;
@@ -3080,6 +3081,11 @@ public final class AmqpServerFactory implements StreamFactory
                     decode:
                     if (!fragmented)
                     {
+                        if (aborted)
+                        {
+                            break decode;
+                        }
+
                         this.remoteLinkCredit--;
                         if (remoteLinkCredit < 0)
                         {
@@ -3104,16 +3110,26 @@ public final class AmqpServerFactory implements StreamFactory
                             .bodyKind(b -> b.set(decodeBodyKind))
                             .deferred(decodableBytes)
                             .build();
+
+                        doApplicationData(traceId, authorization, flags, reserved, payload, extension);
                     }
                     else
                     {
-                        OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
-                        if (messageFragment.sizeof() > 0)
+                        if (aborted)
                         {
-                            payload = messageFragment;
+                            payload = EMPTY_OCTETS;
                         }
+                        else
+                        {
+                            OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
+                            if (messageFragment.sizeof() > 0)
+                            {
+                                payload = messageFragment;
+                            }
+                        }
+
+                        doApplicationData(traceId, authorization, flags, reserved, payload, extension);
                     }
-                    doApplicationData(traceId, authorization, flags, reserved, payload, extension);
 
                     this.fragmented = more;
                 }
@@ -3509,6 +3525,7 @@ public final class AmqpServerFactory implements StreamFactory
                     OctetsFW payload)
                 {
                     final boolean more = (flags & FLAG_FIN) == 0;
+                    final boolean aborted = (flags & FLAG_INIT) == FLAG_INIT;
 
                     OctetsFW messageFragment = amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
 
@@ -3526,7 +3543,7 @@ public final class AmqpServerFactory implements StreamFactory
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
-                    final int fragmentSize = fragmentLimit - fragmentOffset;
+                    final int fragmentSize = !aborted ? fragmentLimit - fragmentOffset : 0;
                     final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
                     if (frameSize <= encodeMaxFrameSize)

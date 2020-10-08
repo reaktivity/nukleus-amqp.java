@@ -1396,4 +1396,73 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.aborted.at.init.message/client",
+        "${server}/send.to.server.when.aborted.at.init.message/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenAbortedAtInitialMessage() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.aborted.at.non.last.message.fragment/client",
+        "${server}/send.to.server.when.aborted.at.non.last.message.fragment/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenAbortedAtNonLastMessage() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.aborted.at.last.message.fragment/client",
+        "${server}/send.to.server.when.aborted.at.last.message.fragment/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenAbortedAtLastMessage() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.aborted.at.init.message/client",
+        "${server}/send.to.client.when.aborted.at.init.message/server" })
+    public void shouldSendToClientWhenAbortedAtInitialMessage() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.aborted.at.non.last.message.fragment/client",
+        "${server}/send.to.client.when.aborted.at.non.last.message.fragment/server" })
+    public void shouldSendToClientWhenAbortedAtNonLastMessage() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Ignore
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.aborted.at.last.message.fragment/client",
+        "${server}/send.to.client.when.aborted.at.last.message.fragment/server" })
+    public void shouldSendToClientWhenAbortedAtLastMessage() throws Exception
+    {
+        k3po.finish();
+    }
 }
