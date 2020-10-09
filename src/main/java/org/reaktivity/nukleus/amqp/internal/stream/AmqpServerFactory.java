@@ -372,6 +372,7 @@ public final class AmqpServerFactory implements StreamFactory
 
     private final StringFW timeoutDescription = new String8FW("idle-timeout expired");
     private final StringFW timeoutTooSmallDescription = new String8FW("idle-timeout is too small");
+    private final StringFW defaultOutgoingLocales = new String8FW("en-US");
     private final StringFW anonymous = new String8FW("ANONYMOUS");
 
     private final AmqpMessageEncoder amqpMessageHelper = new AmqpMessageEncoder();
@@ -2413,6 +2414,11 @@ public final class AmqpServerFactory implements StreamFactory
             // TODO: use buffer slot capacity instead
             this.encodeMaxFrameSize = (int) Math.min(replySharedBudget, open.maxFrameSize());
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
+            if (open.hasOutgoingLocales() && !open.outgoingLocales().isEmpty() &&
+                !open.outgoingLocales().anyMatch(item -> item.get().equals(defaultOutgoingLocales)))
+            {
+                onDecodeError(traceId, authorization, NOT_ALLOWED, null);
+            }
             if (writeIdleTimeout > 0)
             {
                 if (writeIdleTimeout < MIN_IDLE_TIMEOUT)

@@ -1396,4 +1396,22 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/open.with.outgoing.locales/client" })
+    public void shouldSendOpenWithOutgoingLocales() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/reject.open.with.outgoing.locales.when.enus.omitted/client" })
+    public void shouldSendOpenWithOutgoingLocalesWhenEnUsOmitted() throws Exception
+    {
+        k3po.finish();
+    }
 }
