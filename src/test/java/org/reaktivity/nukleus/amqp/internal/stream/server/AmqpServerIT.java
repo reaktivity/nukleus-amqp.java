@@ -1401,10 +1401,10 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.when.aborted.at.init.message/client",
-        "${server}/send.to.server.when.aborted.at.init.message/server" })
+        "${client}/link/transfer.to.server.when.first.fragment.aborted/client",
+        "${server}/send.to.server.when.first.fragment.aborted/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServerWhenAbortedAtInitialMessage() throws Exception
+    public void shouldSendToServerWhenFirstFragmentAborted() throws Exception
     {
         k3po.finish();
     }
@@ -1413,10 +1413,10 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.when.aborted.at.non.last.message.fragment/client",
-        "${server}/send.to.server.when.aborted.at.non.last.message.fragment/server" })
+        "${client}/link/transfer.to.server.when.middle.fragment.aborted/client",
+        "${server}/send.to.server.when.middle.fragment.aborted/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServerWhenAbortedAtNonLastMessage() throws Exception
+    public void shouldSendToServerWhenMiddleFragmentAborted() throws Exception
     {
         k3po.finish();
     }
@@ -1425,10 +1425,10 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.when.aborted.at.last.message.fragment/client",
-        "${server}/send.to.server.when.aborted.at.last.message.fragment/server" })
+        "${client}/link/transfer.to.server.when.last.fragment.aborted/client",
+        "${server}/send.to.server.when.last.fragment.aborted/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServerWhenAbortedAtLastMessage() throws Exception
+    public void shouldSendToServerWhenLastFragmentAborted() throws Exception
     {
         k3po.finish();
     }
@@ -1437,9 +1437,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.when.aborted.at.init.message/client",
-        "${server}/send.to.client.when.aborted.at.init.message/server" })
-    public void shouldSendToClientWhenAbortedAtInitialMessage() throws Exception
+        "${client}/link/transfer.to.client.when.first.fragment.aborted/client",
+        "${server}/send.to.client.when.first.fragment.aborted/server" })
+    public void shouldSendToClientWhenFirstFragmentAborted() throws Exception
     {
         k3po.finish();
     }
@@ -1448,9 +1448,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.when.aborted.at.non.last.message.fragment/client",
-        "${server}/send.to.client.when.aborted.at.non.last.message.fragment/server" })
-    public void shouldSendToClientWhenAbortedAtNonLastMessage() throws Exception
+        "${client}/link/transfer.to.client.when.middle.fragment.aborted/client",
+        "${server}/send.to.client.when.middle.fragment.aborted/server" })
+    public void shouldSendToClientWhenMiddleFragmentAborted() throws Exception
     {
         k3po.finish();
     }
@@ -1459,9 +1459,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.when.aborted.at.last.message.fragment/client",
-        "${server}/send.to.client.when.aborted.at.last.message.fragment/server" })
-    public void shouldSendToClientWhenAbortedAtLastMessage() throws Exception
+        "${client}/link/transfer.to.client.when.last.fragment.aborted/client",
+        "${server}/send.to.client.when.last.fragment.aborted/server" })
+    public void shouldSendToClientWhenLastFragmentAborted() throws Exception
     {
         k3po.finish();
     }

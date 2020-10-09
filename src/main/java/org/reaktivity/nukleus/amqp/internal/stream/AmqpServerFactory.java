@@ -3525,7 +3525,7 @@ public final class AmqpServerFactory implements StreamFactory
                     OctetsFW payload)
                 {
                     final boolean more = (flags & FLAG_FIN) == 0;
-                    final boolean aborted = (flags & FLAG_INIT) == FLAG_INIT;
+                    final boolean aborted = (flags & FLAG_INCOMPLETE) == FLAG_INCOMPLETE;
 
                     OctetsFW messageFragment = amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
 
