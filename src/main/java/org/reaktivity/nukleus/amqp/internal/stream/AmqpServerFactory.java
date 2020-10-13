@@ -2875,7 +2875,6 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpServerStream attachedLink = links.get(flow.handle());
                     if (attachedLink.detachError != null)
                     {
-                        onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
                         break decode;
                     }
                     attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit());
