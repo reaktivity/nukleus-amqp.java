@@ -2535,7 +2535,10 @@ public final class AmqpServerFactory implements StreamFactory
                 error = detach.error().errorList().condition();
             }
             AmqpSession session = sessions.get(decodeChannel);
-            session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            if (session != null)
+            {
+                session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            }
         }
 
         private void onDecodeEnd(
@@ -2892,7 +2895,6 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpServerStream attachedLink = links.get(flow.handle());
                     if (attachedLink.detachError != null)
                     {
-                        onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
                         break decode;
                     }
                     attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit());

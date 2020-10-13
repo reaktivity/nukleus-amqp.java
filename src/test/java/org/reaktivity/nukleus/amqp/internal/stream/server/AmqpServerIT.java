@@ -1400,6 +1400,16 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/attach.as.receiver.then.detach.with.error.then.flow/client",
+        "${server}/connect.and.reset/server" })
+    public void shouldNotTriggerErrorWhenReceivingFlowAfterDetach() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/handle.max.exceeded/client",
         "${server}/handle.max.exceeded/server" })
     @Configure(name = "nukleus.amqp.handle.max", value = "2")
