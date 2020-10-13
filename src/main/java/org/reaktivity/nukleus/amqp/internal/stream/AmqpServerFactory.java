@@ -2517,7 +2517,10 @@ public final class AmqpServerFactory implements StreamFactory
                 error = detach.error().errorList().condition();
             }
             AmqpSession session = sessions.get(decodeChannel);
-            session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            if (session != null)
+            {
+                session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            }
         }
 
         private void onDecodeEnd(
