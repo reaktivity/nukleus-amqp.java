@@ -1396,4 +1396,15 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/handle.max.exceeded/client",
+        "${server}/handle.max.exceeded/server" })
+    @Configure(name = "nukleus.amqp.handle.max", value = "2")
+    public void shouldCloseConnectionWhenHandleMaxExceeded() throws Exception
+    {
+        k3po.finish();
+    }
 }

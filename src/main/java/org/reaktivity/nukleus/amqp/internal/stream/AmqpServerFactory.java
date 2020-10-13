@@ -35,6 +35,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationKeyFW.KIN
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.RECEIVE_ONLY;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_AND_RECEIVE;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_ONLY;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW.DEFAULT_VALUE_HANDLE_MAX;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.APPLICATION_PROPERTIES;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DATA;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
@@ -423,6 +424,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final int closeTimeout;
     private final StringFW containerId;
     private final long defaultMaxFrameSize;
+    private final long defaultHandleMax;
     private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
 
@@ -484,6 +486,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.containerId = new String8FW(config.containerId());
         this.outgoingWindow = config.outgoingWindow();
         this.defaultMaxFrameSize = config.maxFrameSize();
+        this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
         this.closeTimeout = config.closeExchangeTimeout();
@@ -1344,6 +1347,7 @@ public final class AmqpServerFactory implements StreamFactory
         private int decodeChannel;
         private int outgoingChannel;
         private int decodableBodyBytes;
+        private long decodeHandleMax;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private int encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long writeIdleTimeout = DEFAULT_IDLE_TIMEOUT;
@@ -1381,6 +1385,7 @@ public final class AmqpServerFactory implements StreamFactory
             this.sessions = new Int2ObjectHashMap<>();
             this.hasSaslOutcome = false;
             this.decodeMaxFrameSize = defaultMaxFrameSize;
+            this.decodeHandleMax = defaultHandleMax;
             this.connectionState = START;
         }
 
@@ -1512,12 +1517,19 @@ public final class AmqpServerFactory implements StreamFactory
             final int performativeSize = beginType.sizeof();
             frameBuffer.putBytes(FRAME_HEADER_SIZE, beginType.buffer(), 0, performativeSize);
 
-            final AmqpBeginFW begin = amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
-                .remoteChannel(remoteChannel)
-                .nextOutgoingId(nextOutgoingId)
-                .incomingWindow(bufferPool.slotCapacity())
-                .outgoingWindow(outgoingWindow)
-                .build();
+            final AmqpBeginFW.Builder builder =
+                amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
+                    .remoteChannel(remoteChannel)
+                    .nextOutgoingId(nextOutgoingId)
+                    .incomingWindow(bufferPool.slotCapacity())
+                    .outgoingWindow(outgoingWindow);
+
+            if (decodeHandleMax != DEFAULT_VALUE_HANDLE_MAX)
+            {
+                builder.handleMax(decodeHandleMax);
+            }
+
+            final AmqpBeginFW begin = builder.build();
 
             final int size = FRAME_HEADER_SIZE + performativeSize + begin.sizeof();
 
@@ -2460,8 +2472,14 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpAttachFW attach)
         {
             AmqpSession session = sessions.get(decodeChannel);
+            decode:
             if (session != null)
             {
+                if (session.handleCount == decodeHandleMax)
+                {
+                    onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR, null);
+                    break decode;
+                }
                 session.onDecodeAttach(traceId, authorization, attach);
             }
             else
@@ -2726,6 +2744,7 @@ public final class AmqpServerFactory implements StreamFactory
             private int outgoingWindow;
             private int remoteIncomingWindow;
             private int remoteOutgoingWindow;
+            private int handleCount;
 
             private AmqpSessionState sessionState;
 
@@ -2840,6 +2859,7 @@ public final class AmqpServerFactory implements StreamFactory
                         AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
                         link.onDecodeAttach(traceId, authorization, attach);
+                        handleCount++;
                     }
                     else
                     {
