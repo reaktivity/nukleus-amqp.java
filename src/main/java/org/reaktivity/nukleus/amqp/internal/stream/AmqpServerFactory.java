@@ -2475,7 +2475,7 @@ public final class AmqpServerFactory implements StreamFactory
             decode:
             if (session != null)
             {
-                if (session.handleCount == decodeHandleMax)
+                if (attach.handle() > decodeHandleMax)
                 {
                     onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR, null);
                     break decode;
@@ -2747,7 +2747,6 @@ public final class AmqpServerFactory implements StreamFactory
             private int outgoingWindow;
             private int remoteIncomingWindow;
             private int remoteOutgoingWindow;
-            private int handleCount;
 
             private AmqpSessionState sessionState;
 
@@ -2862,7 +2861,6 @@ public final class AmqpServerFactory implements StreamFactory
                         AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
                         link.onDecodeAttach(traceId, authorization, attach);
-                        handleCount++;
                     }
                     else
                     {
@@ -2946,7 +2944,6 @@ public final class AmqpServerFactory implements StreamFactory
                 if (link != null)
                 {
                     link.onDecodeDetach(traceId, authorization, errorType);
-                    handleCount--;
                 }
             }
 
@@ -2978,7 +2975,6 @@ public final class AmqpServerFactory implements StreamFactory
                 links.values().forEach(l -> l.cleanup(traceId, authorization));
                 sessions.remove(incomingChannel);
                 flushReplySharedBudget(traceId);
-                handleCount = 0;
             }
 
             private class AmqpServerStream
