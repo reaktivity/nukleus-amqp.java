@@ -37,6 +37,7 @@ public class AmqpServerIT
 {
     private final K3poRule k3po = new K3poRule()
         .addScriptRoot("route", "org/reaktivity/specification/nukleus/amqp/control/route")
+        .addScriptRoot("routeext", "org/reaktivity/specification/nukleus/amqp/control/route.ext")
         .addScriptRoot("client", "org/reaktivity/specification/amqp")
         .addScriptRoot("server", "org/reaktivity/specification/nukleus/amqp/streams");
 
@@ -1403,6 +1404,15 @@ public class AmqpServerIT
         "${client}/link/attach.as.receiver.then.detach.with.error.then.flow/client",
         "${server}/connect.and.reset/server" })
     public void shouldNotTriggerErrorWhenReceivingFlowAfterDetach() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${routeext}/receive.only/server/controller",
+        "${client}/link/reject.attach.as.receiver.when.route.does.not.match/client" })
+    public void shouldRejectWhenRouteDoesNotMatch() throws Exception
     {
         k3po.finish();
     }

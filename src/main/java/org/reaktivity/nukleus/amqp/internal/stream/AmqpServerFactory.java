@@ -2846,7 +2846,10 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                     else
                     {
-                        // TODO: reject
+                        AmqpRole amqpRole = role == RECEIVER ? SENDER : RECEIVER;
+                        doEncodeAttach(traceId, authorization, attach.name().asString(), outgoingChannel, handle, amqpRole,
+                            MIXED, FIRST, null, null, initialDeliveryCount);
+                        doEncodeDetach(traceId, authorization, LINK_DETACH_FORCED, outgoingChannel, handle);
                     }
                 }
             }
