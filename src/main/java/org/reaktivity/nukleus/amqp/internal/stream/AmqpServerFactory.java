@@ -2946,6 +2946,7 @@ public final class AmqpServerFactory implements StreamFactory
                 if (link != null)
                 {
                     link.onDecodeDetach(traceId, authorization, errorType);
+                    handleCount--;
                 }
             }
 
@@ -2977,6 +2978,7 @@ public final class AmqpServerFactory implements StreamFactory
                 links.values().forEach(l -> l.cleanup(traceId, authorization));
                 sessions.remove(incomingChannel);
                 flushReplySharedBudget(traceId);
+                handleCount = 0;
             }
 
             private class AmqpServerStream
