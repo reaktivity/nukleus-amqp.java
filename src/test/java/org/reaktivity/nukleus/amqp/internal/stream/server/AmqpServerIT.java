@@ -1410,6 +1410,16 @@ public class AmqpServerIT
 
     @Test
     @Specification({
+        "${route}/server/controller",
+        "${client}/link/handle.max.exceeded/client" })
+    @Configure(name = "nukleus.amqp.handle.max", value = "10")
+    public void shouldCloseConnectionWhenHandleMaxExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
         "${routeext}/receive.only/server/controller",
         "${client}/link/reject.attach.as.receiver.when.route.does.not.match/client" })
     public void shouldRejectWhenRouteDoesNotMatch() throws Exception
