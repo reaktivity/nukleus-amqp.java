@@ -3361,16 +3361,8 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!AmqpState.replyOpened(state))
                     {
                         AmqpRole amqpRole = role == RECEIVER ? SENDER : RECEIVER;
-                        if (amqpRole == RECEIVER)
-                        {
-                            doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
-                                addressFrom, null, deliveryCount);
-                        }
-                        else
-                        {
-                            doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
-                                null, addressTo, deliveryCount);
-                        }
+                        doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
+                            null, null, deliveryCount);
                     }
 
                     setInitialClosed();

@@ -1421,7 +1421,7 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${routeext}/receive.only/server/controller",
-        "${client}/link/reject.attach.as.receiver.when.route.does.not.match/client" })
+        "${client}/link/attach.as.receiver.when.source.does.not.exist/client" })
     public void shouldRejectWhenRouteDoesNotMatch() throws Exception
     {
         k3po.finish();
