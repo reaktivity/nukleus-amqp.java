@@ -99,7 +99,7 @@ public class ControllerIT
         k3po.start();
 
         final JsonObject extension = new JsonObject();
-        extension.addProperty("address", "clients");
+        extension.addProperty("address", "clients/receive");
         extension.addProperty("capabilities", "RECEIVE_ONLY");
 
         reaktor.controller(AmqpController.class)
@@ -174,7 +174,7 @@ public class ControllerIT
         k3po.start();
 
         final JsonObject extension = new JsonObject();
-        extension.addProperty("address", "clients");
+        extension.addProperty("address", "clients/receive");
         extension.addProperty("capabilities", "RECEIVE_ONLY");
 
         reaktor.controller(AmqpController.class)
