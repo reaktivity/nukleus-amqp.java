@@ -1416,4 +1416,14 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.attach.when.handle.in.use/client",
+        "${server}/connect.then.abort/server" })
+    public void shouldCloseConnectionWhenAttachWithHandleInUse() throws Exception
+    {
+        k3po.finish();
+    }
 }

@@ -51,6 +51,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LIN
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_ERRANT_LINK;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_HANDLE_IN_USE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW.DEFAULT_VALUE_MAX_FRAME_SIZE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeType.ATTACH;
@@ -2475,9 +2476,17 @@ public final class AmqpServerFactory implements StreamFactory
             decode:
             if (session != null)
             {
-                if (attach.handle() > decodeHandleMax)
+                final long handle = attach.handle();
+                if (handle > decodeHandleMax)
                 {
                     onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR, null);
+                    break decode;
+                }
+
+                final boolean handleInUse = session.links.values().stream().anyMatch(l -> l.handle == handle);
+                if (handleInUse)
+                {
+                    onDecodeError(traceId, authorization, SESSION_HANDLE_IN_USE, null);
                     break decode;
                 }
                 session.onDecodeAttach(traceId, authorization, attach);
