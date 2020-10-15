@@ -2483,7 +2483,7 @@ public final class AmqpServerFactory implements StreamFactory
                     break decode;
                 }
 
-                final boolean handleInUse = session.links.values().stream().anyMatch(l -> l.handle == handle);
+                final boolean handleInUse = session.links.containsKey(handle);
                 if (handleInUse)
                 {
                     onDecodeError(traceId, authorization, SESSION_HANDLE_IN_USE, null);
