@@ -1400,6 +1400,25 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/connection/open.with.outgoing.locales.negotiated.default/client" })
+    public void shouldSendOpenWithOutgoingLocalesNegotiatedDefault() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/open.with.outgoing.locales.negotiated.non.default/client" })
+    @Configure(name = "nukleus.amqp.incoming.locales", value = "jp")
+    public void shouldOpenWithOutgoingLocakesNegotiatedNonDefault() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/attach.as.receiver.then.detach.with.error.then.flow/client",
         "${server}/connect.and.reset/server" })
     public void shouldNotTriggerErrorWhenReceivingFlowAfterDetach() throws Exception

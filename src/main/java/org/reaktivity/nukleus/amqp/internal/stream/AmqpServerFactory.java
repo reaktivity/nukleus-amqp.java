@@ -121,6 +121,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFlowFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpHeaderFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpIETFLanguageTagFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMapFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMessagePropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW;
@@ -275,8 +276,10 @@ public final class AmqpServerFactory implements StreamFactory
         new Array32FW.Builder<>(new AmqpApplicationPropertyFW.Builder(), new AmqpApplicationPropertyFW());
     private final AmqpSaslMechanismsFW.Builder amqpSaslMechanismsRW = new AmqpSaslMechanismsFW.Builder();
     private final AmqpSaslOutcomeFW.Builder amqpSaslOutcomeRW = new AmqpSaslOutcomeFW.Builder();
-    private final Array8FW.Builder<AmqpSymbolFW.Builder, AmqpSymbolFW> annonymousRW =
+    private final Array8FW.Builder<AmqpSymbolFW.Builder, AmqpSymbolFW> anonymousRW =
         new Array8FW.Builder<>(new AmqpSymbolFW.Builder(), new AmqpSymbolFW());
+    private final Array8FW.Builder<AmqpIETFLanguageTagFW.Builder, AmqpIETFLanguageTagFW> incomingLocalesRW =
+        new Array8FW.Builder<>(new AmqpIETFLanguageTagFW.Builder(), new AmqpIETFLanguageTagFW());
 
     private final AmqpPerformativeTypeFW openType = new AmqpPerformativeTypeFW.Builder()
         .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
@@ -428,6 +431,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final long defaultHandleMax;
     private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
+    private final StringFW defaultIncomingLocales;
 
     private final Map<AmqpPerformativeType, AmqpServerDecoder> decodersByPerformativeType;
     {
@@ -490,6 +494,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
+        this.defaultIncomingLocales = new String8FW(config.incomingLocales());
         this.closeTimeout = config.closeExchangeTimeout();
         this.signaler = signaler;
     }
@@ -1424,7 +1429,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             StringFW mechanisms)
         {
-            Array8FW<AmqpSymbolFW> annonymousRO = annonymousRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+            Array8FW<AmqpSymbolFW> annonymousRO = anonymousRW.wrap(extraBuffer, 0, extraBuffer.capacity())
                 .item(i -> i.set(mechanisms))
                 .build();
 
@@ -1488,6 +1493,14 @@ public final class AmqpServerFactory implements StreamFactory
             if (defaultIdleTimeout != DEFAULT_IDLE_TIMEOUT)
             {
                 builder.idleTimeOut(defaultIdleTimeout);
+            }
+
+            if (defaultIncomingLocales.length() > 0)
+            {
+                Array8FW<AmqpIETFLanguageTagFW> incomingLocales = incomingLocalesRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+                    .item(i -> i.set(defaultIncomingLocales))
+                    .build();
+                builder.incomingLocales(incomingLocales);
             }
 
             final AmqpOpenFW open = builder.build();
@@ -2426,6 +2439,7 @@ public final class AmqpServerFactory implements StreamFactory
             // TODO: use buffer slot capacity instead
             this.encodeMaxFrameSize = (int) Math.min(replySharedBudget, open.maxFrameSize());
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
+
             if (writeIdleTimeout > 0)
             {
                 if (writeIdleTimeout < MIN_IDLE_TIMEOUT)
