@@ -1408,9 +1408,37 @@ public class AmqpServerIT
 
     @Test
     @Specification({
+        "${client}/link/attach.as.receiver.then.detach.with.error.then.flow/client",
+        "${server}/connect.and.reset/server" })
+    public void shouldNotTriggerErrorWhenReceivingFlowAfterDetach() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
         "${route}/server/controller",
         "${client}/connection/reject.open.with.outgoing.locales.when.enus.omitted/client" })
     public void shouldSendOpenWithOutgoingLocalesWhenEnUsOmitted() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${client}/link/handle.max.exceeded/client" })
+    @Configure(name = "nukleus.amqp.handle.max", value = "10")
+    public void shouldCloseConnectionWhenHandleMaxExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.attach.when.handle.in.use/client",
+        "${server}/connect.then.abort/server" })
+    public void shouldCloseConnectionWhenAttachWithHandleInUse() throws Exception
     {
         k3po.finish();
     }

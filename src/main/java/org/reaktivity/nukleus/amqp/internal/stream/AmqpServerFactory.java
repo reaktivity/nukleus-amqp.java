@@ -35,6 +35,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationKeyFW.KIN
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.RECEIVE_ONLY;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_AND_RECEIVE;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_ONLY;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW.DEFAULT_VALUE_HANDLE_MAX;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.APPLICATION_PROPERTIES;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DATA;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
@@ -50,6 +51,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LIN
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_ERRANT_LINK;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_HANDLE_IN_USE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW.DEFAULT_VALUE_MAX_FRAME_SIZE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeType.ATTACH;
@@ -424,6 +426,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final int closeTimeout;
     private final StringFW containerId;
     private final long defaultMaxFrameSize;
+    private final long defaultHandleMax;
     private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
 
@@ -485,6 +488,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.containerId = new String8FW(config.containerId());
         this.outgoingWindow = config.outgoingWindow();
         this.defaultMaxFrameSize = config.maxFrameSize();
+        this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
         this.closeTimeout = config.closeExchangeTimeout();
@@ -1345,6 +1349,7 @@ public final class AmqpServerFactory implements StreamFactory
         private int decodeChannel;
         private int outgoingChannel;
         private int decodableBodyBytes;
+        private long decodeHandleMax;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private int encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long writeIdleTimeout = DEFAULT_IDLE_TIMEOUT;
@@ -1382,6 +1387,7 @@ public final class AmqpServerFactory implements StreamFactory
             this.sessions = new Int2ObjectHashMap<>();
             this.hasSaslOutcome = false;
             this.decodeMaxFrameSize = defaultMaxFrameSize;
+            this.decodeHandleMax = defaultHandleMax;
             this.connectionState = START;
         }
 
@@ -1513,12 +1519,19 @@ public final class AmqpServerFactory implements StreamFactory
             final int performativeSize = beginType.sizeof();
             frameBuffer.putBytes(FRAME_HEADER_SIZE, beginType.buffer(), 0, performativeSize);
 
-            final AmqpBeginFW begin = amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
-                .remoteChannel(remoteChannel)
-                .nextOutgoingId(nextOutgoingId)
-                .incomingWindow(bufferPool.slotCapacity())
-                .outgoingWindow(outgoingWindow)
-                .build();
+            final AmqpBeginFW.Builder builder =
+                amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
+                    .remoteChannel(remoteChannel)
+                    .nextOutgoingId(nextOutgoingId)
+                    .incomingWindow(bufferPool.slotCapacity())
+                    .outgoingWindow(outgoingWindow);
+
+            if (decodeHandleMax != DEFAULT_VALUE_HANDLE_MAX)
+            {
+                builder.handleMax(decodeHandleMax);
+            }
+
+            final AmqpBeginFW begin = builder.build();
 
             final int size = FRAME_HEADER_SIZE + performativeSize + begin.sizeof();
 
@@ -2466,8 +2479,22 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpAttachFW attach)
         {
             AmqpSession session = sessions.get(decodeChannel);
+            decode:
             if (session != null)
             {
+                final long handle = attach.handle();
+                if (handle > decodeHandleMax)
+                {
+                    onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR, null);
+                    break decode;
+                }
+
+                final boolean handleInUse = session.links.containsKey(handle);
+                if (handleInUse)
+                {
+                    onDecodeError(traceId, authorization, SESSION_HANDLE_IN_USE, null);
+                    break decode;
+                }
                 session.onDecodeAttach(traceId, authorization, attach);
             }
             else
@@ -2523,7 +2550,10 @@ public final class AmqpServerFactory implements StreamFactory
                 error = detach.error().errorList().condition();
             }
             AmqpSession session = sessions.get(decodeChannel);
-            session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            if (session != null)
+            {
+                session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            }
         }
 
         private void onDecodeEnd(
@@ -2878,7 +2908,6 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpServerStream attachedLink = links.get(flow.handle());
                     if (attachedLink.detachError != null)
                     {
-                        onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
                         break decode;
                     }
                     attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit());
