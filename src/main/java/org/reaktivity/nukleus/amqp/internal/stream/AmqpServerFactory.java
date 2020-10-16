@@ -2757,6 +2757,7 @@ public final class AmqpServerFactory implements StreamFactory
             private final int incomingChannel;
 
             private long deliveryId = NO_DELIVERY_ID;
+            private long abortedDeliveryId = NO_DELIVERY_ID;
             private long remoteDeliveryId = NO_DELIVERY_ID;
             private int outgoingChannel;
             private int nextIncomingId;
@@ -3027,7 +3028,6 @@ public final class AmqpServerFactory implements StreamFactory
                 private StringFW addressTo;
                 private long decodeMaxMessageSize;
                 private long encodeMaxMessageSize;
-                private boolean maxMessageSizeExceeded;
 
                 private AmqpErrorType detachError;
 
@@ -3469,7 +3469,7 @@ public final class AmqpServerFactory implements StreamFactory
                         deliveryId++;
                         onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
                     }
-                    else
+                    else if (deliveryId != abortedDeliveryId)
                     {
                         onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
                     }
@@ -3521,14 +3521,13 @@ public final class AmqpServerFactory implements StreamFactory
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
-                    final int fragmentSize = fragmentLimit - fragmentOffset;
+                    int fragmentSize = fragmentLimit - fragmentOffset;
 
-                    if (encodeMaxMessageSize > 0 && fragmentSize > encodeMaxMessageSize)
+                    if (encodeMaxMessageSize > 0 && fragmentSize + deferred > encodeMaxMessageSize)
                     {
                         transferBuilder.aborted(1);
-                        doEncodeTransfer(traceId, authorization, outgoingChannel, transferBuilder.build(),
-                            fragmentBuffer, fragmentOffset, 0);
-                        maxMessageSizeExceeded = more;
+                        abortedDeliveryId = deliveryId;
+                        fragmentSize = 0;
                     }
 
                     final AmqpTransferFW transfer = transferBuilder.build();
@@ -3589,17 +3588,6 @@ public final class AmqpServerFactory implements StreamFactory
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
                     final int fragmentSize = fragmentLimit - fragmentOffset;
-                    if (maxMessageSizeExceeded)
-                    {
-                        transferBuilder.aborted(1);
-                        doEncodeTransfer(traceId, authorization, outgoingChannel, transferBuilder.build(),
-                            fragmentBuffer, fragmentOffset, 0);
-                        if (!more)
-                        {
-                            maxMessageSizeExceeded = false;
-                        }
-                        return;
-                    }
                     final AmqpTransferFW transfer = transferBuilder.build();
                     final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
