@@ -1426,4 +1426,26 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.max.message.size.exceeded/client",
+        "${server}/send.to.client.with.vbin32/server" })
+    public void shouldSendToClientAndHandleMaxMessageSize() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.max.message.size.exceeded/client",
+        "${server}/max.message.size.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.message.size", value = "100")
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerAndHandleMaxMessageSize() throws Exception
+    {
+        k3po.finish();
+    }
 }
