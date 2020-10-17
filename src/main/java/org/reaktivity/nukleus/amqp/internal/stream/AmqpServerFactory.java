@@ -1673,15 +1673,21 @@ public final class AmqpServerFactory implements StreamFactory
             final int performativeSize = flowType.sizeof();
             frameBuffer.putBytes(FRAME_HEADER_SIZE, flowType.buffer(), 0, performativeSize);
 
-            final AmqpFlowFW flow = amqpFlowRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
-                .nextIncomingId(nextIncomingId)
-                .incomingWindow(incomingWindow)
-                .nextOutgoingId(nextOutgoingId)
-                .outgoingWindow(outgoingWindow)
-                .handle(handle)
-                .deliveryCount(deliveryCount)
-                .linkCredit(linkCredit)
-                .build();
+            final AmqpFlowFW.Builder builder =
+                amqpFlowRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
+                    .nextIncomingId(nextIncomingId)
+                    .incomingWindow(incomingWindow)
+                    .nextOutgoingId(nextOutgoingId)
+                    .outgoingWindow(outgoingWindow);
+
+            if (handle >= 0)
+            {
+                builder.handle(handle)
+                    .deliveryCount(deliveryCount)
+                    .linkCredit(linkCredit);
+            }
+
+            final AmqpFlowFW flow = builder.build();
 
             final int size = FRAME_HEADER_SIZE + performativeSize + flow.sizeof();
 
@@ -2921,25 +2927,33 @@ public final class AmqpServerFactory implements StreamFactory
                 int flowIncomingWindow = (int) flow.incomingWindow();
                 int flowNextOutgoingId = (int) flow.nextOutgoingId();
                 int flowOutgoingWindow = (int) flow.outgoingWindow();
-                assert flow.hasHandle() == flow.hasDeliveryCount();
-                assert flow.hasHandle() == flow.hasLinkCredit();
-
-                this.nextIncomingId = flowNextOutgoingId;
-                this.remoteIncomingWindow = flowNextIncomingId + flowIncomingWindow - nextOutgoingId;
-                this.remoteOutgoingWindow = flowOutgoingWindow;
-
-                flushReplySharedBudget(traceId);
+                boolean hasHandle = flow.hasHandle();
+                assert hasHandle == flow.hasDeliveryCount();
+                assert hasHandle == flow.hasLinkCredit();
 
                 decode:
-                if (flow.hasHandle())
+                if (hasHandle)
                 {
                     AmqpServerStream attachedLink = links.get(flow.handle());
                     if (attachedLink.detachError != null)
                     {
                         break decode;
                     }
-                    attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit());
+
+                    attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit(),
+                        flow.hasEcho());
                 }
+                else if (flow.hasEcho())
+                {
+                    doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
+                        -1, -1, -1);
+                }
+
+                this.nextIncomingId = flowNextOutgoingId;
+                this.remoteIncomingWindow = flowNextIncomingId + flowIncomingWindow - nextOutgoingId;
+                this.remoteOutgoingWindow = flowOutgoingWindow;
+
+                flushReplySharedBudget(traceId);
             }
 
             private void onDecodeTransfer(
@@ -3102,11 +3116,17 @@ public final class AmqpServerFactory implements StreamFactory
                 private void onDecodeFlow(
                     long traceId,
                     long authorization,
-                    long deliveryCount,
-                    int linkCredit)
+                    long decodeDeliveryCount,
+                    int decodeLinkCredit,
+                    boolean hasEcho)
                 {
-                    this.linkCredit = (int) (deliveryCount + linkCredit - remoteDeliveryCount);
-                    this.remoteDeliveryCount = deliveryCount;
+                    if (hasEcho)
+                    {
+                        doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
+                            handle, deliveryCount, remoteLinkCredit);
+                    }
+                    this.linkCredit = (int) (decodeDeliveryCount + decodeLinkCredit - remoteDeliveryCount);
+                    this.remoteDeliveryCount = decodeDeliveryCount;
                     flushReplyWindow(traceId, authorization);
                 }
 
