@@ -1400,6 +1400,25 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/connection/open.with.outgoing.locales.negotiated.default/client" })
+    public void shouldSendOpenWithOutgoingLocalesNegotiatedDefault() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/open.with.outgoing.locales.negotiated.non.default/client" })
+    @Configure(name = "nukleus.amqp.incoming.locales", value = "jp")
+    public void shouldOpenWithOutgoingLocakesNegotiatedNonDefault() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/attach.as.receiver.then.detach.with.error.then.flow/client",
         "${server}/connect.and.reset/server" })
     public void shouldNotTriggerErrorWhenReceivingFlowAfterDetach() throws Exception
@@ -1423,6 +1442,50 @@ public class AmqpServerIT
         "${client}/link/reject.attach.when.handle.in.use/client",
         "${server}/connect.then.abort/server" })
     public void shouldCloseConnectionWhenAttachWithHandleInUse() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.max.message.size.exceeded/client",
+        "${server}/send.to.client.with.vbin32/server" })
+    public void shouldSendToClientAndHandleMaxMessageSize() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.max.message.size.exceeded/client",
+        "${server}/max.message.size.exceeded/server" })
+    @Configure(name = "nukleus.amqp.max.message.size", value = "100")
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerAndHandleMaxMessageSize() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.then.flow.with.echo.on.link/client",
+        "${server}/send.to.server.then.flow.with.echo/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerThenFlowWithEchoOnLink() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.then.flow.with.echo.on.session/client",
+        "${server}/send.to.server.then.flow.with.echo/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerThenFlowWithEchoOnSession() throws Exception
     {
         k3po.finish();
     }

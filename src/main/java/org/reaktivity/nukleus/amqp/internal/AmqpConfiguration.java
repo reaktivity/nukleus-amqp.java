@@ -23,11 +23,15 @@ public class AmqpConfiguration extends Configuration
     public static final IntPropertyDef AMQP_CHANNEL_MAX;
     public static final LongPropertyDef AMQP_MAX_FRAME_SIZE;
     public static final LongPropertyDef AMQP_HANDLE_MAX;
+    public static final LongPropertyDef AMQP_MAX_MESSAGE_SIZE;
     public static final LongPropertyDef AMQP_IDLE_TIMEOUT;
     public static final IntPropertyDef AMQP_OUTGOING_WINDOW;
     public static final LongPropertyDef AMQP_INITIAL_DEVIVERY_COUNT;
     public static final IntPropertyDef AMQP_CLOSE_EXCHANGE_TIMEOUT;
+    public static final PropertyDef<String[]> AMQP_INCOMING_LOCALES;
     private static final ConfigurationDef AMQP_CONFIG;
+
+    public static final String[] AMQP_INCOMING_LOCALES_DEFAULT = { "en-US" };
 
     static
     {
@@ -36,10 +40,13 @@ public class AmqpConfiguration extends Configuration
         AMQP_CHANNEL_MAX = config.property("channel.max", 65535);
         AMQP_MAX_FRAME_SIZE = config.property("max.frame.size", 4294967295L);
         AMQP_HANDLE_MAX = config.property("handle.max", 4294967295L);
+        AMQP_MAX_MESSAGE_SIZE = config.property("max.message.size", 0L);
         AMQP_IDLE_TIMEOUT = config.property("idle.timeout", 0L);
         AMQP_OUTGOING_WINDOW = config.property("outgoing.window", Integer.MAX_VALUE);
         AMQP_INITIAL_DEVIVERY_COUNT = config.property("initial.delivery.count", 0L);
         AMQP_CLOSE_EXCHANGE_TIMEOUT = config.property("close.exchange.timeout", 10000);
+        AMQP_INCOMING_LOCALES = config.property(String[].class, "incoming.locales",
+            s -> s.split("\\s+"), c -> AMQP_INCOMING_LOCALES_DEFAULT);
         AMQP_CONFIG = config;
     }
 
@@ -69,6 +76,11 @@ public class AmqpConfiguration extends Configuration
         return AMQP_HANDLE_MAX.getAsLong(this);
     }
 
+    public long maxMessageSize()
+    {
+        return AMQP_MAX_MESSAGE_SIZE.getAsLong(this);
+    }
+
     public long idleTimeout()
     {
         return AMQP_IDLE_TIMEOUT.getAsLong(this);
@@ -87,5 +99,10 @@ public class AmqpConfiguration extends Configuration
     public int closeExchangeTimeout()
     {
         return AMQP_CLOSE_EXCHANGE_TIMEOUT.getAsInt(this);
+    }
+
+    public String[] incomingLocales()
+    {
+        return AMQP_INCOMING_LOCALES.get(this);
     }
 }
