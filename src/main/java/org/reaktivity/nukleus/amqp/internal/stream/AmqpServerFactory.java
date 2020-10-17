@@ -2928,22 +2928,27 @@ public final class AmqpServerFactory implements StreamFactory
                 int flowNextOutgoingId = (int) flow.nextOutgoingId();
                 int flowOutgoingWindow = (int) flow.outgoingWindow();
                 boolean hasHandle = flow.hasHandle();
+                boolean echo = flow.echo() != 0;
+
                 assert hasHandle == flow.hasDeliveryCount();
                 assert hasHandle == flow.hasLinkCredit();
 
                 decode:
                 if (hasHandle)
                 {
-                    AmqpServerStream attachedLink = links.get(flow.handle());
+                    long handle = flow.handle();
+                    long deliveryCount = flow.deliveryCount();
+                    int linkCredit = (int) flow.linkCredit();
+
+                    AmqpServerStream attachedLink = links.get(handle);
                     if (attachedLink.detachError != null)
                     {
                         break decode;
                     }
 
-                    attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit(),
-                        flow.hasEcho());
+                    attachedLink.onDecodeFlow(traceId, authorization, deliveryCount, linkCredit, echo);
                 }
-                else if (flow.hasEcho())
+                else if (echo)
                 {
                     doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
                         -1, -1, -1);
