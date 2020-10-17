@@ -50,6 +50,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.CON
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.ILLEGAL_STATE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_DETACH_FORCED;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_MESSAGE_SIZE_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
@@ -435,6 +436,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final int closeTimeout;
     private final StringFW containerId;
     private final long defaultMaxFrameSize;
+    private final long defaultMaxMessageSize;
     private final long defaultHandleMax;
     private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
@@ -498,6 +500,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.containerId = new String8FW(config.containerId());
         this.outgoingWindow = config.outgoingWindow();
         this.defaultMaxFrameSize = config.maxFrameSize();
+        this.defaultMaxMessageSize = config.maxMessageSize();
         this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
@@ -1583,7 +1586,8 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpReceiverSettleMode receiverSettleMode,
             StringFW addressFrom,
             StringFW addressTo,
-            long deliveryCount)
+            long deliveryCount,
+            long maxMessageSize)
         {
             final int performativeSize = attachType.sizeof();
             frameBuffer.putBytes(FRAME_HEADER_SIZE, attachType.buffer(), 0, performativeSize);
@@ -1629,6 +1633,11 @@ public final class AmqpServerFactory implements StreamFactory
             if (role == AmqpRole.SENDER)
             {
                 builder.initialDeliveryCount(deliveryCount);
+            }
+
+            if (maxMessageSize > 0)
+            {
+                builder.maxMessageSize(maxMessageSize);
             }
 
             final AmqpAttachFW attach = builder.build();
@@ -2772,6 +2781,7 @@ public final class AmqpServerFactory implements StreamFactory
             private final int incomingChannel;
 
             private long deliveryId = NO_DELIVERY_ID;
+            private long abortedDeliveryId = NO_DELIVERY_ID;
             private long remoteDeliveryId = NO_DELIVERY_ID;
             private int outgoingChannel;
             private int nextIncomingId;
@@ -3040,6 +3050,8 @@ public final class AmqpServerFactory implements StreamFactory
                 private AmqpRole role;
                 private StringFW addressFrom;
                 private StringFW addressTo;
+                private long decodeMaxMessageSize;
+                private long encodeMaxMessageSize;
 
                 private AmqpErrorType detachError;
 
@@ -3063,6 +3075,7 @@ public final class AmqpServerFactory implements StreamFactory
                     this.initialId = supplyInitialId.applyAsLong(newRouteId);
                     this.replyId = supplyReplyId.applyAsLong(initialId);
                     this.application = router.supplyReceiver(initialId);
+                    this.decodeMaxMessageSize = defaultMaxMessageSize;
                 }
 
                 private void onDecodeAttach(
@@ -3072,6 +3085,7 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     this.name = attach.name().asString();
                     this.handle = attach.handle();
+                    this.encodeMaxMessageSize = attach.hasMaxMessageSize() ? attach.maxMessageSize() : 0;
 
                     final AmqpCapabilities capability = amqpCapabilities(role);
                     final AmqpSenderSettleMode amqpSenderSettleMode = attach.sndSettleMode();
@@ -3130,6 +3144,7 @@ public final class AmqpServerFactory implements StreamFactory
 
                     OctetsFW payload = null;
                     Flyweight extension = EMPTY_OCTETS;
+                    int size = 0;
                     decode:
                     if (!fragmented)
                     {
@@ -3148,7 +3163,8 @@ public final class AmqpServerFactory implements StreamFactory
 
                         final OctetsFW messageFragment = amqpMessageDecodeHelper.decodeFragmentInit(this, buffer, offset, limit,
                             amqpDataEx);
-                        if (messageFragment.sizeof() > 0)
+                        size = messageFragment.sizeof();
+                        if (size > 0)
                         {
                             payload = messageFragment;
                         }
@@ -3161,12 +3177,21 @@ public final class AmqpServerFactory implements StreamFactory
                     else
                     {
                         OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
-                        if (messageFragment.sizeof() > 0)
+                        size = messageFragment.sizeof();
+                        if (size > 0)
                         {
                             payload = messageFragment;
                         }
                     }
-                    doApplicationData(traceId, authorization, flags, reserved, payload, extension);
+
+                    if (defaultMaxMessageSize > 0 && size > defaultMaxMessageSize)
+                    {
+                        onDecodeError(traceId, authorization, LINK_MESSAGE_SIZE_EXCEEDED);
+                    }
+                    else
+                    {
+                        doApplicationData(traceId, authorization, flags, reserved, payload, extension);
+                    }
 
                     this.fragmented = more;
                 }
@@ -3394,12 +3419,12 @@ public final class AmqpServerFactory implements StreamFactory
                         if (amqpRole == RECEIVER)
                         {
                             doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
-                                addressFrom, null, deliveryCount);
+                                addressFrom, null, deliveryCount, decodeMaxMessageSize);
                         }
                         else
                         {
                             doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
-                                null, addressTo, deliveryCount);
+                                null, addressTo, deliveryCount, decodeMaxMessageSize);
                         }
                     }
 
@@ -3436,7 +3461,7 @@ public final class AmqpServerFactory implements StreamFactory
                     }
 
                     doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, amqpSenderSettleMode,
-                        amqpReceiverSettleMode, addressFrom, addressTo, deliveryCount);
+                        amqpReceiverSettleMode, addressFrom, addressTo, deliveryCount, decodeMaxMessageSize);
 
                     flushInitialWindow(traceId, authorization);
                 }
@@ -3468,7 +3493,7 @@ public final class AmqpServerFactory implements StreamFactory
                         deliveryId++;
                         onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
                     }
-                    else
+                    else if (deliveryId != abortedDeliveryId)
                     {
                         onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
                     }
@@ -3517,11 +3542,19 @@ public final class AmqpServerFactory implements StreamFactory
                         transferBuilder.more(1);
                     }
 
-                    final AmqpTransferFW transfer = transferBuilder.build();
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
-                    final int fragmentSize = fragmentLimit - fragmentOffset;
+                    int fragmentSize = fragmentLimit - fragmentOffset;
+
+                    if (encodeMaxMessageSize > 0 && fragmentSize + deferred > encodeMaxMessageSize)
+                    {
+                        transferBuilder.aborted(1);
+                        abortedDeliveryId = deliveryId;
+                        fragmentSize = 0;
+                    }
+
+                    final AmqpTransferFW transfer = transferBuilder.build();
                     final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
                     if (frameSize <= encodeMaxFrameSize)
@@ -3575,11 +3608,11 @@ public final class AmqpServerFactory implements StreamFactory
                         transferBuilder.more(1);
                     }
 
-                    final AmqpTransferFW transfer = transferBuilder.build();
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
                     final int fragmentSize = fragmentLimit - fragmentOffset;
+                    final AmqpTransferFW transfer = transferBuilder.build();
                     final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
                     if (frameSize <= encodeMaxFrameSize)
