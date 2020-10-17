@@ -1467,4 +1467,26 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.then.flow.with.echo.on.link/client",
+        "${server}/send.to.server.then.flow.with.echo/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerThenFlowWithEchoOnLink() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.then.flow.with.echo.on.session/client",
+        "${server}/send.to.server.then.flow.with.echo/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerThenFlowWithEchoOnSession() throws Exception
+    {
+        k3po.finish();
+    }
 }
