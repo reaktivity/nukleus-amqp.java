@@ -3123,9 +3123,9 @@ public final class AmqpServerFactory implements StreamFactory
                     long authorization,
                     long decodeDeliveryCount,
                     int decodeLinkCredit,
-                    boolean hasEcho)
+                    boolean echo)
                 {
-                    if (hasEcho)
+                    if (echo)
                     {
                         doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
                             handle, deliveryCount, remoteLinkCredit);
