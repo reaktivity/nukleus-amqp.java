@@ -28,7 +28,10 @@ public class AmqpConfiguration extends Configuration
     public static final IntPropertyDef AMQP_OUTGOING_WINDOW;
     public static final LongPropertyDef AMQP_INITIAL_DEVIVERY_COUNT;
     public static final IntPropertyDef AMQP_CLOSE_EXCHANGE_TIMEOUT;
+    public static final PropertyDef<String[]> AMQP_INCOMING_LOCALES;
     private static final ConfigurationDef AMQP_CONFIG;
+
+    public static final String[] AMQP_INCOMING_LOCALES_DEFAULT = { "en-US" };
 
     static
     {
@@ -42,6 +45,8 @@ public class AmqpConfiguration extends Configuration
         AMQP_OUTGOING_WINDOW = config.property("outgoing.window", Integer.MAX_VALUE);
         AMQP_INITIAL_DEVIVERY_COUNT = config.property("initial.delivery.count", 0L);
         AMQP_CLOSE_EXCHANGE_TIMEOUT = config.property("close.exchange.timeout", 10000);
+        AMQP_INCOMING_LOCALES = config.property(String[].class, "incoming.locales",
+            s -> s.split("\\s+"), c -> AMQP_INCOMING_LOCALES_DEFAULT);
         AMQP_CONFIG = config;
     }
 
@@ -94,5 +99,10 @@ public class AmqpConfiguration extends Configuration
     public int closeExchangeTimeout()
     {
         return AMQP_CLOSE_EXCHANGE_TIMEOUT.getAsInt(this);
+    }
+
+    public String[] incomingLocales()
+    {
+        return AMQP_INCOMING_LOCALES.get(this);
     }
 }

@@ -18,7 +18,10 @@ package org.reaktivity.nukleus.amqp.internal.stream;
 import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toList;
+import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_INCOMING_LOCALES_DEFAULT;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.DISCARDING;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.START;
@@ -81,6 +84,7 @@ import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 import static org.reaktivity.nukleus.concurrent.Signaler.NO_CANCEL_ID;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.LongFunction;
@@ -122,6 +126,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFlowFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpHeaderFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpIETFLanguageTagFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMapFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMessagePropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW;
@@ -173,7 +178,10 @@ import org.reaktivity.nukleus.stream.StreamFactory;
 
 public final class AmqpServerFactory implements StreamFactory
 {
+    private static final StringFW[] EMPTY_STRINGFW_ARRAY = new StringFW[0];
     private static final OctetsFW EMPTY_OCTETS = new OctetsFW().wrap(new UnsafeBuffer(), 0, 0);
+
+    private static final StringFW[] DEFAULT_INCOMING_LOCALES = asStringFWArray(AMQP_INCOMING_LOCALES_DEFAULT);
 
     private static final int FLAG_FIN = 1;
     private static final int FLAG_INIT = 2;
@@ -276,8 +284,10 @@ public final class AmqpServerFactory implements StreamFactory
         new Array32FW.Builder<>(new AmqpApplicationPropertyFW.Builder(), new AmqpApplicationPropertyFW());
     private final AmqpSaslMechanismsFW.Builder amqpSaslMechanismsRW = new AmqpSaslMechanismsFW.Builder();
     private final AmqpSaslOutcomeFW.Builder amqpSaslOutcomeRW = new AmqpSaslOutcomeFW.Builder();
-    private final Array8FW.Builder<AmqpSymbolFW.Builder, AmqpSymbolFW> annonymousRW =
+    private final Array8FW.Builder<AmqpSymbolFW.Builder, AmqpSymbolFW> anonymousRW =
         new Array8FW.Builder<>(new AmqpSymbolFW.Builder(), new AmqpSymbolFW());
+    private final Array8FW.Builder<AmqpIETFLanguageTagFW.Builder, AmqpIETFLanguageTagFW> incomingLocalesRW =
+        new Array8FW.Builder<>(new AmqpIETFLanguageTagFW.Builder(), new AmqpIETFLanguageTagFW());
 
     private final AmqpPerformativeTypeFW openType = new AmqpPerformativeTypeFW.Builder()
         .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
@@ -430,6 +440,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final long defaultHandleMax;
     private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
+    private final StringFW[] defaultIncomingLocales;
 
     private final Map<AmqpPerformativeType, AmqpServerDecoder> decodersByPerformativeType;
     {
@@ -493,6 +504,7 @@ public final class AmqpServerFactory implements StreamFactory
         this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
         this.initialDeliveryCount = config.initialDeliveryCount();
+        this.defaultIncomingLocales = asStringFWArray(config.incomingLocales());
         this.closeTimeout = config.closeExchangeTimeout();
         this.signaler = signaler;
     }
@@ -1427,7 +1439,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             StringFW mechanisms)
         {
-            Array8FW<AmqpSymbolFW> annonymousRO = annonymousRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+            Array8FW<AmqpSymbolFW> annonymousRO = anonymousRW.wrap(extraBuffer, 0, extraBuffer.capacity())
                 .item(i -> i.set(mechanisms))
                 .build();
 
@@ -1491,6 +1503,17 @@ public final class AmqpServerFactory implements StreamFactory
             if (defaultIdleTimeout != DEFAULT_IDLE_TIMEOUT)
             {
                 builder.idleTimeOut(defaultIdleTimeout);
+            }
+
+            if (defaultIncomingLocales.length > 0 && !Arrays.equals(defaultIncomingLocales, DEFAULT_INCOMING_LOCALES))
+            {
+                Array8FW.Builder<AmqpIETFLanguageTagFW.Builder, AmqpIETFLanguageTagFW> incomingLocales =
+                        incomingLocalesRW.wrap(extraBuffer, 0, extraBuffer.capacity());
+                for (StringFW incomingLocale : defaultIncomingLocales)
+                {
+                    incomingLocales.item(i -> i.set(incomingLocale));
+                }
+                builder.incomingLocales(incomingLocales.build());
             }
 
             final AmqpOpenFW open = builder.build();
@@ -2435,6 +2458,7 @@ public final class AmqpServerFactory implements StreamFactory
             // TODO: use buffer slot capacity instead
             this.encodeMaxFrameSize = (int) Math.min(replySharedBudget, open.maxFrameSize());
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
+
             if (writeIdleTimeout > 0)
             {
                 if (writeIdleTimeout < MIN_IDLE_TIMEOUT)
@@ -4845,5 +4869,22 @@ public final class AmqpServerFactory implements StreamFactory
             }
             return progress;
         }
+    }
+
+    private static StringFW[] asStringFWArray(
+        String[] strings)
+    {
+        StringFW[] flyweights = EMPTY_STRINGFW_ARRAY;
+
+        if (strings.length != 0)
+        {
+            flyweights = asList(strings)
+                    .stream()
+                    .map(String8FW::new)
+                    .collect(toList())
+                    .toArray(new StringFW[strings.length]);
+        }
+
+        return flyweights;
     }
 }
