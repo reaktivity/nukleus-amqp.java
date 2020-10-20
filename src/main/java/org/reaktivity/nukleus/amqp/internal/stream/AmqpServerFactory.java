@@ -2929,9 +2929,8 @@ public final class AmqpServerFactory implements StreamFactory
                 int flowOutgoingWindow = (int) flow.outgoingWindow();
                 boolean hasHandle = flow.hasHandle();
                 boolean echo = flow.echo() != 0;
-
-                assert hasHandle == flow.hasDeliveryCount();
-                assert hasHandle == flow.hasLinkCredit();
+                boolean hasLinkCredit = flow.hasLinkCredit();
+                boolean hasDeliveryCount = flow.hasDeliveryCount();
 
                 decode:
                 if (hasHandle)
@@ -2947,6 +2946,11 @@ public final class AmqpServerFactory implements StreamFactory
                     }
 
                     attachedLink.onDecodeFlow(traceId, authorization, deliveryCount, linkCredit, echo);
+                }
+                else if (hasLinkCredit || hasDeliveryCount)
+                {
+                    AmqpServer.this.onDecodeError(traceId, authorization, DECODE_ERROR, null);
+                    return;
                 }
                 else if (echo)
                 {
