@@ -2944,7 +2944,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (attachedLink == null)
                     {
                         onDecodeError(traceId, authorization, SESSION_UNATTACHED_HANDLE);
-                        return;
+                        break decode;
                     }
 
                     if (attachedLink.detachError != null)
