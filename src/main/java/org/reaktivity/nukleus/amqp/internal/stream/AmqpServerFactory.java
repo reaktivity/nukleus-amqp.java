@@ -56,6 +56,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_ERRANT_LINK;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_HANDLE_IN_USE;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_UNATTACHED_HANDLE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW.DEFAULT_VALUE_MAX_FRAME_SIZE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeType.ATTACH;
@@ -2940,6 +2941,12 @@ public final class AmqpServerFactory implements StreamFactory
                     int linkCredit = (int) flow.linkCredit();
 
                     AmqpServerStream attachedLink = links.get(handle);
+                    if (attachedLink == null)
+                    {
+                        onDecodeError(traceId, authorization, SESSION_UNATTACHED_HANDLE);
+                        break decode;
+                    }
+
                     if (attachedLink.detachError != null)
                     {
                         break decode;

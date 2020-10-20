@@ -1509,4 +1509,14 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/flow.with.unattached.handle/client",
+        "${server}/connect.then.abort/server" })
+    public void shouldEndSessionWhenFlowWithUnattachedHandle() throws Exception
+    {
+        k3po.finish();
+    }
 }
