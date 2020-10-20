@@ -1490,6 +1490,25 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.flow.with.inconsistent.fields/client",
+        "${server}/connect.then.abort/server" })
+    public void shouldCloseConnectionWhenFlowHasInconsistentFields() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/flow.without.handle/client",
+        "${server}/send.to.client.with.str8utf8/server" })
+    public void shouldAllowFlowWithoutHandle() throws Exception
+    {
+        k3po.finish();
+    }
 
     @Test
     @Specification({
