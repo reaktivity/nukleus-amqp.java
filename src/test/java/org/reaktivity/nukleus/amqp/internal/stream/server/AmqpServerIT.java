@@ -1530,5 +1530,4 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
-
 }
