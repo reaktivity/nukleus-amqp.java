@@ -1519,4 +1519,15 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.sequence.number/client",
+        "${server}/send.to.server.with.sequence.number/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldWrapSequenceNumberWhenReachesLimit() throws Exception
+    {
+        k3po.finish();
+    }
 }

@@ -439,7 +439,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final long defaultMaxFrameSize;
     private final long defaultMaxMessageSize;
     private final long defaultHandleMax;
-    private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
     private final StringFW[] defaultIncomingLocales;
 
@@ -504,7 +503,6 @@ public final class AmqpServerFactory implements StreamFactory
         this.defaultMaxMessageSize = config.maxMessageSize();
         this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
-        this.initialDeliveryCount = config.initialDeliveryCount();
         this.defaultIncomingLocales = asStringFWArray(config.incomingLocales());
         this.closeTimeout = config.closeExchangeTimeout();
         this.signaler = signaler;
@@ -3169,7 +3167,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!more)
                     {
                         flags |= FLAG_FIN;
-                        deliveryCount++;
+                        deliveryCount = (deliveryCount + 1) % 0xFFFF_FFFFL;
                     }
 
                     int transferFlags = 0;
@@ -3487,7 +3485,7 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpRole amqpRole = role == RECEIVER ? SENDER : RECEIVER;
                     AmqpSenderSettleMode amqpSenderSettleMode = MIXED;
                     AmqpReceiverSettleMode amqpReceiverSettleMode = FIRST;
-                    deliveryCount = initialDeliveryCount;
+                    deliveryCount = remoteDeliveryCount;
 
                     final AmqpBeginExFW amqpBeginEx = begin.extension().get(amqpBeginExRO::tryWrap);
                     if (amqpBeginEx != null)
