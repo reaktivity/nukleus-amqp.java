@@ -1519,4 +1519,13 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/reject.incorrect.fields.key.type/client" })
+    public void shouldRejectIncorrectFieldsKeyType() throws Exception
+    {
+        k3po.finish();
+    }
 }
