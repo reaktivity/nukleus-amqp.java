@@ -1147,14 +1147,18 @@ public final class AmqpServerFactory implements StreamFactory
                     session.remoteDeliveryId = deliveryId;
                 }
 
-                if (deliveryId != NO_DELIVERY_ID && deliveryId != session.remoteDeliveryId) // TODO: error
-                {
-                    break decode;
-                }
                 server.decodableBodyBytes -= transfer.sizeof();
                 final int fragmentOffset = transfer.limit();
                 final int fragmentSize = server.decodableBodyBytes;
                 final int fragmentLimit = fragmentOffset + fragmentSize;
+
+                if (deliveryId != NO_DELIVERY_ID && deliveryId != session.remoteDeliveryId)
+                {
+                    server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+                    progress = fragmentLimit;
+                    server.decoder = decodePlainFrame;
+                    break decode;
+                }
 
                 assert fragmentLimit <= limit;
 
@@ -2995,7 +2999,7 @@ public final class AmqpServerFactory implements StreamFactory
                 }
                 else if (hasLinkCredit || hasDeliveryCount)
                 {
-                    AmqpServer.this.onDecodeError(traceId, authorization, DECODE_ERROR, null);
+                    AmqpServer.this.onDecodeError(traceId, authorization, INVALID_FIELD, null);
                     return;
                 }
                 else if (echo)
@@ -3130,6 +3134,9 @@ public final class AmqpServerFactory implements StreamFactory
                 private AmqpSectionDecoder decoder;
                 private int decodableBytes;
 
+                BoundedOctetsFW deliveryTag;
+                long messageFormat;
+
                 AmqpServerStream(
                     String addressFrom,
                     String addressTo,
@@ -3204,6 +3211,11 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!fragmented)
                     {
                         flags |= FLAG_INIT;
+                        if (more)
+                        {
+                            this.deliveryTag = deliveryTag;
+                            this.messageFormat = messageFormat;
+                        }
                     }
                     if (!more)
                     {
@@ -3262,6 +3274,11 @@ public final class AmqpServerFactory implements StreamFactory
                     if (defaultMaxMessageSize > 0 && size > defaultMaxMessageSize)
                     {
                         onDecodeError(traceId, authorization, LINK_MESSAGE_SIZE_EXCEEDED);
+                    }
+                    else if (fragmented && ((deliveryTag != null && !this.deliveryTag.equals(deliveryTag)) ||
+                        this.messageFormat != messageFormat))
+                    {
+                        AmqpServer.this.onDecodeError(traceId, authorization, INVALID_FIELD, null);
                     }
                     else
                     {

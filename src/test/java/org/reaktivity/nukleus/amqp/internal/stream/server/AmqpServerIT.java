@@ -1523,6 +1523,17 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/reject.transfer.with.more.inconsistent.fields/client",
+        "${server}/abort.after.sending.first.fragment/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldCloseConnectionWhenTransferWithMoreAndInconsistentFields() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/connection/reject.incorrect.fields.key.type/client" })
     public void shouldRejectIncorrectFieldsKeyType() throws Exception
     {
