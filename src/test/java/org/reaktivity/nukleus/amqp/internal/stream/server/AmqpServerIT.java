@@ -1489,4 +1489,54 @@ public class AmqpServerIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.flow.with.inconsistent.fields/client",
+        "${server}/connect.then.abort/server" })
+    public void shouldCloseConnectionWhenFlowHasInconsistentFields() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/flow.without.handle/client",
+        "${server}/send.to.client.with.str8utf8/server" })
+    public void shouldAllowFlowWithoutHandle() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/flow.with.unattached.handle/client",
+        "${server}/connect.then.abort/server" })
+    public void shouldEndSessionWhenFlowWithUnattachedHandle() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.transfer.with.more.inconsistent.fields/client",
+        "${server}/abort.after.sending.first.fragment/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldCloseConnectionWhenTransferWithMoreAndInconsistentFields() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/reject.incorrect.fields.key.type/client" })
+    public void shouldRejectIncorrectFieldsKeyType() throws Exception
+    {
+        k3po.finish();
+    }
 }

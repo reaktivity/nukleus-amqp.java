@@ -352,7 +352,7 @@ scope protocol
 //                AmqpArray<AmqpValue>;
         }
 
-        map AmqpFields<AmqpValue, V> using AmqpMap;
+        map AmqpFields<AmqpSymbol, V> using AmqpMap;
 
         typedef AmqpUInt as AmqpHandle;
         typedef AmqpUInt as AmqpSeconds;
