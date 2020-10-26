@@ -51,9 +51,9 @@
 
     <k3po.version>3.1.0</k3po.version>
 
-    <nukleus.plugin.version>0.70</nukleus.plugin.version>
+    <nukleus.plugin.version>0.73</nukleus.plugin.version>
 
-    <nukleus.amqp.spec.version>0.50</nukleus.amqp.spec.version>
+    <nukleus.amqp.spec.version>0.51</nukleus.amqp.spec.version>
     <reaktor.version>0.146</reaktor.version>
   </properties>
 
