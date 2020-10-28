@@ -1141,7 +1141,7 @@ public final class AmqpServerFactory implements StreamFactory
                 if (!sender.fragmented)
                 {
                     assert deliveryId != NO_DELIVERY_ID; // TODO: error
-                    session.remoteDeliveryId = (session.remoteDeliveryId + 1) & 0xFFFF_FFFFL;
+                    session.remoteDeliveryId = sequenceNext(session.remoteDeliveryId);
                     if (deliveryId != session.remoteDeliveryId)
                     {
                         server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
@@ -3028,7 +3028,7 @@ public final class AmqpServerFactory implements StreamFactory
                 int offset,
                 int limit)
             {
-                this.nextIncomingId = (this.nextIncomingId + 1) & 0xFFFF_FFFFL;
+                this.nextIncomingId = sequenceNext(nextIncomingId);
                 this.remoteOutgoingWindow--;
                 this.incomingWindow--;
                 if (links.get(transfer.handle()).detachError != null)
@@ -3224,7 +3224,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!more)
                     {
                         flags |= FLAG_FIN;
-                        deliveryCount = (deliveryCount + 1) & 0xFFFF_FFFFL;
+                        deliveryCount = sequenceNext(deliveryCount);
                     }
 
                     int transferFlags = 0;
@@ -4982,5 +4982,11 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         return flyweights;
+    }
+
+    private static long sequenceNext(
+        long value)
+    {
+        return (value + 1) & 0xFFFF_FFFFL;
     }
 }
