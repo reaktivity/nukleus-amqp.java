@@ -1523,10 +1523,43 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.large.delivery.count/client",
+        "${server}/send.to.server.with.large.delivery.count/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithLargeDeliveryCount() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/reject.transfer.with.more.inconsistent.fields/client",
         "${server}/abort.after.sending.first.fragment/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldCloseConnectionWhenTransferWithMoreAndInconsistentFields() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.large.next.incoming.id/client",
+        "${server}/send.to.server.with.str8utf8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithLargeNextIncomingId() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.invalid.delivery.id/client",
+        "${server}/send.to.server.with.invalid.delivery.id/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithInvalidDeliveryId() throws Exception
     {
         k3po.finish();
     }

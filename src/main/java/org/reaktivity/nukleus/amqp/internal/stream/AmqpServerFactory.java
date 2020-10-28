@@ -440,7 +440,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final long defaultMaxFrameSize;
     private final long defaultMaxMessageSize;
     private final long defaultHandleMax;
-    private final long initialDeliveryCount;
     private final long defaultIdleTimeout;
     private final StringFW[] defaultIncomingLocales;
 
@@ -505,7 +504,6 @@ public final class AmqpServerFactory implements StreamFactory
         this.defaultMaxMessageSize = config.maxMessageSize();
         this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
-        this.initialDeliveryCount = config.initialDeliveryCount();
         this.defaultIncomingLocales = asStringFWArray(config.incomingLocales());
         this.closeTimeout = config.closeExchangeTimeout();
         this.signaler = signaler;
@@ -1143,8 +1141,14 @@ public final class AmqpServerFactory implements StreamFactory
                 if (!sender.fragmented)
                 {
                     assert deliveryId != NO_DELIVERY_ID; // TODO: error
-                    assert deliveryId == session.remoteDeliveryId + 1; // TODO: error
-                    session.remoteDeliveryId = deliveryId;
+                    session.remoteDeliveryId = sequenceNext(session.remoteDeliveryId);
+                    if (deliveryId != session.remoteDeliveryId)
+                    {
+                        server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+                        progress = limit;
+                        server.decoder = decodePlainFrame;
+                        break decode;
+                    }
                 }
 
                 server.decodableBodyBytes -= transfer.sizeof();
@@ -1708,7 +1712,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             int channel,
             int nextOutgoingId,
-            int nextIncomingId,
+            long nextIncomingId,
             long incomingWindow,
             long handle,
             long deliveryCount,
@@ -2539,7 +2543,7 @@ public final class AmqpServerFactory implements StreamFactory
                 else
                 {
                     session.outgoingChannel(outgoingChannel);
-                    session.nextIncomingId((int) begin.nextOutgoingId());
+                    session.nextIncomingId(begin.nextOutgoingId());
                     session.incomingWindow(writeBuffer.capacity());
                     session.outgoingWindow(outgoingWindow);
                     session.remoteIncomingWindow((int) begin.incomingWindow());
@@ -2834,7 +2838,7 @@ public final class AmqpServerFactory implements StreamFactory
             private long abortedDeliveryId = NO_DELIVERY_ID;
             private long remoteDeliveryId = NO_DELIVERY_ID;
             private int outgoingChannel;
-            private int nextIncomingId;
+            private long nextIncomingId;
             private int incomingWindow;
             private int nextOutgoingId;
             private int outgoingWindow;
@@ -2859,7 +2863,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             private void nextIncomingId(
-                int nextOutgoingId)
+                long nextOutgoingId)
             {
                 this.nextIncomingId = nextOutgoingId;
             }
@@ -2969,7 +2973,7 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 int flowNextIncomingId = (int) flow.nextIncomingId();
                 int flowIncomingWindow = (int) flow.incomingWindow();
-                int flowNextOutgoingId = (int) flow.nextOutgoingId();
+                long flowNextOutgoingId = flow.nextOutgoingId();
                 int flowOutgoingWindow = (int) flow.outgoingWindow();
                 boolean hasHandle = flow.hasHandle();
                 boolean echo = flow.echo() != 0;
@@ -3024,7 +3028,7 @@ public final class AmqpServerFactory implements StreamFactory
                 int offset,
                 int limit)
             {
-                this.nextIncomingId++;
+                this.nextIncomingId = sequenceNext(nextIncomingId);
                 this.remoteOutgoingWindow--;
                 this.incomingWindow--;
                 if (links.get(transfer.handle()).detachError != null)
@@ -3220,7 +3224,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!more)
                     {
                         flags |= FLAG_FIN;
-                        deliveryCount++;
+                        deliveryCount = sequenceNext(deliveryCount);
                     }
 
                     int transferFlags = 0;
@@ -3543,7 +3547,7 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpRole amqpRole = role == RECEIVER ? SENDER : RECEIVER;
                     AmqpSenderSettleMode amqpSenderSettleMode = MIXED;
                     AmqpReceiverSettleMode amqpReceiverSettleMode = FIRST;
-                    deliveryCount = initialDeliveryCount;
+                    deliveryCount = remoteDeliveryCount;
 
                     final AmqpBeginExFW amqpBeginEx = begin.extension().get(amqpBeginExRO::tryWrap);
                     if (amqpBeginEx != null)
@@ -4978,5 +4982,11 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         return flyweights;
+    }
+
+    private static long sequenceNext(
+        long value)
+    {
+        return (value + 1) & 0xFFFF_FFFFL;
     }
 }
