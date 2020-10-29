@@ -54,6 +54,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LIN
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_MESSAGE_SIZE_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.PRECONDITION_FAILED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_ERRANT_LINK;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_HANDLE_IN_USE;
@@ -2957,6 +2958,10 @@ public final class AmqpServerFactory implements StreamFactory
                         AmqpServerStream link = new AmqpServerStream(addressFrom, addressTo, role, route);
                         AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
+                        if (sourceList != null)
+                        {
+                            link.sourceDurable = sourceList.hasDurable() && sourceList.durable().value() > 0;
+                        }
                         link.onDecodeAttach(traceId, authorization, attach);
                     }
                     else
@@ -3138,6 +3143,9 @@ public final class AmqpServerFactory implements StreamFactory
                 private AmqpSectionDecoder decoder;
                 private int decodableBytes;
 
+                private boolean sourceDurable;
+                private boolean headerDurable;
+
                 BoundedOctetsFW deliveryTag;
                 long messageFormat;
 
@@ -3275,7 +3283,11 @@ public final class AmqpServerFactory implements StreamFactory
                         }
                     }
 
-                    if (defaultMaxMessageSize > 0 && size > defaultMaxMessageSize)
+                    if (!sourceDurable && headerDurable)
+                    {
+                        onDecodeError(traceId, authorization, PRECONDITION_FAILED);
+                    }
+                    else if (defaultMaxMessageSize > 0 && size > defaultMaxMessageSize)
                     {
                         onDecodeError(traceId, authorization, LINK_MESSAGE_SIZE_EXCEEDED);
                     }
@@ -4474,7 +4486,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             stream.decodeBodyKind = null;
 
-            skipHeaders(buffer, offset, limit);
+            decodeHeaders(buffer, offset, limit, stream);
             skipDeliveryAnnotations(buffer, decodeOffset, limit);
             final Array32FW<AmqpAnnotationFW> annotations = decodeAnnotations(buffer, decodeOffset, limit);
             amqpDataEx.annotations(annotations);
@@ -4780,18 +4792,26 @@ public final class AmqpServerFactory implements StreamFactory
             return progress;
         }
 
-        private void skipHeaders(
+        private void decodeHeaders(
             DirectBuffer buffer,
             int offset,
-            int limit)
+            int limit,
+            AmqpServer.AmqpSession.AmqpServerStream stream)
         {
             this.decodeOffset = offset;
             final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, offset, limit);
 
             if (sectionType != null && sectionType.get() == AmqpSectionType.HEADER)
             {
-                AmqpHeaderFW headers = headersRO.tryWrap(buffer, sectionType.limit(), limit);
-                this.decodeOffset = headers.limit();
+                AmqpHeaderFW header = headersRO.tryWrap(buffer, sectionType.limit(), limit);
+                assert header != null;
+
+                if (header.hasDurable() && header.durable() != 0)
+                {
+                    stream.headerDurable = true;
+                }
+
+                this.decodeOffset = header.limit();
             }
         }
 
