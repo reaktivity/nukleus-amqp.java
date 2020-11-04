@@ -1440,7 +1440,7 @@ public class AmqpServerIT
     @Specification({
         "${route}/server/controller",
         "${client}/link/reject.attach.when.handle.in.use/client",
-        "${server}/connect.then.abort/server" })
+        "${server}/connect.as.receiver.then.abort/server" })
     public void shouldCloseConnectionWhenAttachWithHandleInUse() throws Exception
     {
         k3po.finish();
@@ -1460,7 +1460,7 @@ public class AmqpServerIT
     @Specification({
         "${route}/server/controller",
         "${client}/link/transfer.to.server.max.message.size.exceeded/client",
-        "${server}/max.message.size.exceeded/server" })
+        "${server}/connect.as.sender.then.abort/server" })
     @Configure(name = "nukleus.amqp.max.message.size", value = "100")
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerAndHandleMaxMessageSize() throws Exception
@@ -1494,7 +1494,7 @@ public class AmqpServerIT
     @Specification({
         "${route}/server/controller",
         "${client}/link/reject.flow.with.inconsistent.fields/client",
-        "${server}/connect.then.abort/server" })
+        "${server}/connect.as.receiver.then.abort/server" })
     public void shouldCloseConnectionWhenFlowHasInconsistentFields() throws Exception
     {
         k3po.finish();
@@ -1514,7 +1514,7 @@ public class AmqpServerIT
     @Specification({
         "${route}/server/controller",
         "${client}/link/flow.with.unattached.handle/client",
-        "${server}/connect.then.abort/server" })
+        "${server}/connect.as.receiver.then.abort/server" })
     public void shouldEndSessionWhenFlowWithUnattachedHandle() throws Exception
     {
         k3po.finish();
@@ -1611,6 +1611,17 @@ public class AmqpServerIT
         "${server}/send.to.server.with.application.properties/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.durable.message.when.durable.not.supported/client",
+        "${server}/connect.as.sender.then.abort/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldRejectDurableMessageWhenDurableNotSupported() throws Exception
     {
         k3po.finish();
     }
