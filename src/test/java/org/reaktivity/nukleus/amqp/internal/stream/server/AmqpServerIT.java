@@ -1058,10 +1058,10 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.with.application.properties/client",
-        "${server}/send.to.server.with.application.properties/server" })
+        "${client}/link/transfer.to.server.with.application.properties.str8utf8.value/client",
+        "${server}/send.to.server.with.application.properties.str8utf8.value/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServerWithApplicationProperties() throws Exception
+    public void shouldSendToServerWithApplicationPropertiesStr8Utf8Value() throws Exception
     {
         k3po.finish();
     }
@@ -1187,9 +1187,9 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.client.with.application.properties/client",
-        "${server}/send.to.client.with.application.properties/server" })
-    public void shouldSendToClientWithApplicationProperties() throws Exception
+        "${client}/link/transfer.to.client.with.application.properties.str8utf8.value/client",
+        "${server}/send.to.client.with.application.properties.str8utf8.value/server" })
+    public void shouldSendToClientWithApplicationPropertiesStr8Utf8Value() throws Exception
     {
         k3po.finish();
     }
@@ -1569,6 +1569,48 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/connection/reject.incorrect.fields.key.type/client" })
     public void shouldRejectIncorrectFieldsKeyType() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.application.properties.uint8.value/client",
+        "${server}/send.to.server.with.application.properties.uint8.value/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithApplicationPropertiesUint8Value() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.application.properties.uint8.value/client",
+        "${server}/send.to.client.with.application.properties.uint8.value/server" })
+    public void shouldSendToClientWithApplicationPropertiesUint8Value() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.application.properties/client",
+        "${server}/send.to.client.with.application.properties/server" })
+    public void shouldSendToClientWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.application.properties/client",
+        "${server}/send.to.server.with.application.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithApplicationProperties() throws Exception
     {
         k3po.finish();
     }

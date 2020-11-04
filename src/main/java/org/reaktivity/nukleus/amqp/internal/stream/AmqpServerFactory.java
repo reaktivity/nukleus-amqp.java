@@ -115,6 +115,7 @@ import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
 import org.reaktivity.nukleus.amqp.internal.types.OctetsFW;
 import org.reaktivity.nukleus.amqp.internal.types.String8FW;
 import org.reaktivity.nukleus.amqp.internal.types.StringFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpApplicationPropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpAttachFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBinaryFW;
@@ -145,6 +146,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionTypeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSecurityFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSenderSettleMode;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSimpleTypeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSourceFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSourceListFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpStringFW;
@@ -254,9 +256,12 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpMessagePropertiesFW amqpPropertiesRO = new AmqpMessagePropertiesFW();
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationPropertyRO =
         new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
+    private final AmqpApplicationPropertiesFW<AmqpSimpleTypeFW> applicationPropertiesRO =
+        new AmqpApplicationPropertiesFW<>(new AmqpStringFW(), new AmqpSimpleTypeFW());
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> footerRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final AmqpSectionTypeFW amqpSectionTypeRO = new AmqpSectionTypeFW();
     private final AmqpValueFW amqpValueRO = new AmqpValueFW();
+    private final AmqpSimpleTypeFW amqpSimpleTypeRO = new AmqpSimpleTypeFW();
 
     private final AmqpFrameHeaderFW.Builder amqpFrameHeaderRW = new AmqpFrameHeaderFW.Builder();
     private final AmqpSaslFrameHeaderFW.Builder amqpSaslFrameHeaderRW = new AmqpSaslFrameHeaderFW.Builder();
@@ -270,7 +275,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpCloseFW.Builder amqpCloseRW = new AmqpCloseFW.Builder();
     private final AmqpErrorListFW.Builder amqpErrorListRW = new AmqpErrorListFW.Builder();
     private final AmqpStringFW.Builder amqpStringRW = new AmqpStringFW.Builder();
-    private final AmqpStringFW.Builder amqpValueRW = new AmqpStringFW.Builder();
+    private final AmqpSimpleTypeFW.Builder amqpValueRW = new AmqpSimpleTypeFW.Builder();
     private final AmqpSymbolFW.Builder amqpSymbolRW = new AmqpSymbolFW.Builder();
     private final AmqpSourceListFW.Builder amqpSourceListRW = new AmqpSourceListFW.Builder();
     private final AmqpTargetListFW.Builder amqpTargetListRW = new AmqpTargetListFW.Builder();
@@ -3873,9 +3878,9 @@ public final class AmqpServerFactory implements StreamFactory
         private final AmqpMapFW.Builder<AmqpValueFW, AmqpValueFW, AmqpValueFW.Builder, AmqpValueFW.Builder> annotationsRW =
             new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
                 new AmqpValueFW.Builder());
-        private final AmqpMapFW.Builder<AmqpValueFW, AmqpValueFW, AmqpValueFW.Builder, AmqpValueFW.Builder>
-            applicationPropertiesRW = new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
-            new AmqpValueFW.Builder());
+        private final AmqpApplicationPropertiesFW.Builder<AmqpSimpleTypeFW, AmqpSimpleTypeFW.Builder>
+            applicationPropertiesRW = new AmqpApplicationPropertiesFW.Builder<>(new AmqpStringFW(), new AmqpSimpleTypeFW(),
+            new AmqpStringFW.Builder(), new AmqpSimpleTypeFW.Builder());
 
         private AmqpSectionEncoder sectionEncoder;
         private int encodableBytes;
@@ -4141,17 +4146,14 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeApplicationProperty(
             AmqpApplicationPropertyFW item)
         {
-            int  valueOffset = 0;
-            AmqpStringFW key = amqpStringRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
-                .set(item.key())
-                .build();
-            valueOffset += key.sizeof();
+            DirectBuffer buffer = item.value().bytes().buffer();
+            int offset = item.value().bytes().offset();
+            int limit = item.value().bytes().limit();
 
-            AmqpStringFW value = amqpValueRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
-                .set(item.value())
-                .build();
+            StringFW key =  item.key();
+            AmqpSimpleTypeFW value = amqpSimpleTypeRO.tryWrap(buffer, offset, limit);
 
-            applicationPropertiesRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
+            applicationPropertiesRW.entry(k -> k.set(key), v -> v.set(value));
         }
 
         private int encodeSectionData(
@@ -4934,14 +4936,14 @@ public final class AmqpServerFactory implements StreamFactory
 
             if (sectionType != null && sectionType.get() == AmqpSectionType.APPLICATION_PROPERTIES)
             {
-                AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperty = applicationPropertyRO.tryWrap(buffer,
+                AmqpApplicationPropertiesFW<AmqpSimpleTypeFW> applicationProperty = applicationPropertiesRO.tryWrap(buffer,
                     sectionType.limit(), limit);
+
                 applicationProperty.forEach((k, v) ->
                 {
-                    String key = k.getAsAmqpString().asString();
-                    String value = v.getAsAmqpString().asString();
-                    // TODO: handle different type of values
-                    applicationPropertyBuilder.item(kb -> kb.key(key).value(value));
+                    String key = k.get().asString();
+                    applicationPropertyBuilder.item(kb -> kb.key(key)
+                                                            .value(i -> i.bytes(v.buffer(), v.offset(), v.sizeof())));
                 });
                 this.decodeOffset = applicationProperty.limit();
             }
