@@ -4158,9 +4158,10 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeApplicationProperty(
             AmqpApplicationPropertyFW item)
         {
-            DirectBuffer buffer = item.value().bytes().buffer();
-            int offset = item.value().bytes().offset();
-            int limit = item.value().bytes().limit();
+            final OctetsFW bytes = item.value().bytes();
+            DirectBuffer buffer = bytes.buffer();
+            int offset = bytes.offset();
+            int limit = bytes.limit();
 
             StringFW key =  item.key();
             AmqpSimpleTypeFW value = amqpSimpleTypeRO.tryWrap(buffer, offset, limit);
