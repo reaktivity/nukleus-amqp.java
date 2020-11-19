@@ -352,6 +352,53 @@ scope protocol
 //                AmqpArray<AmqpValue>;
         }
 
+        variant AmqpSimpleType switch (AmqpType)
+        {
+            case NULL:
+                AmqpNull;
+            case BOOLEAN:
+            case TRUE:
+            case FALSE:
+                AmqpBoolean;
+            case UBYTE:
+                AmqpUByte;
+            case USHORT:
+                AmqpUShort;
+            case UINT4:
+            case UINT1:
+            case UINT0:
+                AmqpUInt;
+            case ULONG8:
+            case ULONG1:
+            case ULONG0:
+                AmqpULong;
+            case BYTE:
+                AmqpByte;
+            case SHORT:
+                AmqpShort;
+            case INT4:
+            case INT1:
+                AmqpInt;
+            case LONG8:
+            case LONG1:
+                AmqpLong;
+            case CHAR:
+                AmqpChar;
+            case TIMESTAMP:
+                AmqpTimestamp;
+            case UUID:
+                AmqpUUId;
+            case BINARY1:
+            case BINARY4:
+                AmqpBinary;
+            case STRING1:
+            case STRING4:
+                AmqpString;
+            case SYMBOL1:
+            case SYMBOL4:
+                AmqpSymbol;
+        }
+
         map AmqpFields<AmqpSymbol, V> using AmqpMap;
 
         typedef AmqpUInt as AmqpHandle;
@@ -795,6 +842,8 @@ scope protocol
             AmqpSequenceNo groupSequence;
             AmqpString replyToGroupId;
         }
+
+        map AmqpApplicationProperties<AmqpString, V> using AmqpMap;
 
 //
 //        union AmqpLifetimePolicy switch (AmqpDescribedType)
