@@ -1058,17 +1058,6 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.with.application.properties/client",
-        "${server}/send.to.server.with.application.properties/server" })
-    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServerWithApplicationProperties() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-        "${route}/server/controller",
         "${client}/link/transfer.to.server.with.footer/client",
         "${server}/send.to.server.with.footer/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
@@ -1180,16 +1169,6 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.with.properties/client",
         "${server}/send.to.client.with.properties/server" })
     public void shouldSendToClientWithProperties() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-        "${route}/server/controller",
-        "${client}/link/transfer.to.client.with.application.properties/client",
-        "${server}/send.to.client.with.application.properties/server" })
-    public void shouldSendToClientWithApplicationProperties() throws Exception
     {
         k3po.finish();
     }
@@ -1569,6 +1548,27 @@ public class AmqpServerIT
         "${route}/server/controller",
         "${client}/connection/reject.incorrect.fields.key.type/client" })
     public void shouldRejectIncorrectFieldsKeyType() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.application.properties/client",
+        "${server}/send.to.client.with.application.properties/server" })
+    public void shouldSendToClientWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.application.properties/client",
+        "${server}/send.to.server.with.application.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithApplicationProperties() throws Exception
     {
         k3po.finish();
     }
