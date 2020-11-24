@@ -18,7 +18,10 @@ package org.reaktivity.nukleus.amqp.internal.stream;
 import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toList;
+import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_INCOMING_LOCALES_DEFAULT;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.DISCARDING;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.ERROR;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.START;
@@ -35,6 +38,7 @@ import static org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationKeyFW.KIN
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.RECEIVE_ONLY;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_AND_RECEIVE;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_ONLY;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW.DEFAULT_VALUE_HANDLE_MAX;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.APPLICATION_PROPERTIES;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.DATA;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.MESSAGE_ANNOTATIONS;
@@ -45,11 +49,16 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.CONNECTION_FRAMING_ERROR;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.DECODE_ERROR;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.ILLEGAL_STATE;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.INVALID_FIELD;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_DETACH_FORCED;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_MESSAGE_SIZE_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.LINK_TRANSFER_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.NOT_ALLOWED;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.PRECONDITION_FAILED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.RESOURCE_LIMIT_EXCEEDED;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_ERRANT_LINK;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_HANDLE_IN_USE;
+import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_UNATTACHED_HANDLE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType.SESSION_WINDOW_VIOLATION;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW.DEFAULT_VALUE_MAX_FRAME_SIZE;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpPerformativeType.ATTACH;
@@ -78,6 +87,7 @@ import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 import static org.reaktivity.nukleus.concurrent.Signaler.NO_CANCEL_ID;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.LongFunction;
@@ -106,6 +116,7 @@ import org.reaktivity.nukleus.amqp.internal.types.Flyweight;
 import org.reaktivity.nukleus.amqp.internal.types.OctetsFW;
 import org.reaktivity.nukleus.amqp.internal.types.String8FW;
 import org.reaktivity.nukleus.amqp.internal.types.StringFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpApplicationPropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpAttachFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBinaryFW;
@@ -119,6 +130,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpErrorType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFlowFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpFrameHeaderFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpHeaderFW;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpIETFLanguageTagFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMapFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpMessagePropertiesFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpOpenFW;
@@ -135,6 +147,7 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionType;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSectionTypeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSecurityFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSenderSettleMode;
+import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSimpleTypeFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSourceFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpSourceListFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpStringFW;
@@ -170,7 +183,10 @@ import org.reaktivity.nukleus.stream.StreamFactory;
 
 public final class AmqpServerFactory implements StreamFactory
 {
+    private static final StringFW[] EMPTY_STRINGFW_ARRAY = new StringFW[0];
     private static final OctetsFW EMPTY_OCTETS = new OctetsFW().wrap(new UnsafeBuffer(), 0, 0);
+
+    private static final StringFW[] DEFAULT_INCOMING_LOCALES = asStringFWArray(AMQP_INCOMING_LOCALES_DEFAULT);
 
     private static final int FLAG_FIN = 1;
     private static final int FLAG_INIT = 2;
@@ -242,9 +258,12 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpMessagePropertiesFW amqpPropertiesRO = new AmqpMessagePropertiesFW();
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationPropertyRO =
         new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
+    private final AmqpApplicationPropertiesFW<AmqpSimpleTypeFW> applicationPropertiesRO =
+        new AmqpApplicationPropertiesFW<>(new AmqpStringFW(), new AmqpSimpleTypeFW());
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> footerRO = new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
     private final AmqpSectionTypeFW amqpSectionTypeRO = new AmqpSectionTypeFW();
     private final AmqpValueFW amqpValueRO = new AmqpValueFW();
+    private final AmqpSimpleTypeFW amqpSimpleTypeRO = new AmqpSimpleTypeFW();
 
     private final AmqpFrameHeaderFW.Builder amqpFrameHeaderRW = new AmqpFrameHeaderFW.Builder();
     private final AmqpSaslFrameHeaderFW.Builder amqpSaslFrameHeaderRW = new AmqpSaslFrameHeaderFW.Builder();
@@ -258,7 +277,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpCloseFW.Builder amqpCloseRW = new AmqpCloseFW.Builder();
     private final AmqpErrorListFW.Builder amqpErrorListRW = new AmqpErrorListFW.Builder();
     private final AmqpStringFW.Builder amqpStringRW = new AmqpStringFW.Builder();
-    private final AmqpStringFW.Builder amqpValueRW = new AmqpStringFW.Builder();
+    private final AmqpSimpleTypeFW.Builder amqpValueRW = new AmqpSimpleTypeFW.Builder();
     private final AmqpSymbolFW.Builder amqpSymbolRW = new AmqpSymbolFW.Builder();
     private final AmqpSourceListFW.Builder amqpSourceListRW = new AmqpSourceListFW.Builder();
     private final AmqpTargetListFW.Builder amqpTargetListRW = new AmqpTargetListFW.Builder();
@@ -274,8 +293,10 @@ public final class AmqpServerFactory implements StreamFactory
         new Array32FW.Builder<>(new AmqpApplicationPropertyFW.Builder(), new AmqpApplicationPropertyFW());
     private final AmqpSaslMechanismsFW.Builder amqpSaslMechanismsRW = new AmqpSaslMechanismsFW.Builder();
     private final AmqpSaslOutcomeFW.Builder amqpSaslOutcomeRW = new AmqpSaslOutcomeFW.Builder();
-    private final Array8FW.Builder<AmqpSymbolFW.Builder, AmqpSymbolFW> annonymousRW =
+    private final Array8FW.Builder<AmqpSymbolFW.Builder, AmqpSymbolFW> anonymousRW =
         new Array8FW.Builder<>(new AmqpSymbolFW.Builder(), new AmqpSymbolFW());
+    private final Array8FW.Builder<AmqpIETFLanguageTagFW.Builder, AmqpIETFLanguageTagFW> incomingLocalesRW =
+        new Array8FW.Builder<>(new AmqpIETFLanguageTagFW.Builder(), new AmqpIETFLanguageTagFW());
 
     private final AmqpPerformativeTypeFW openType = new AmqpPerformativeTypeFW.Builder()
         .wrap(new UnsafeBuffer(new byte[3]), 0, 3)
@@ -424,8 +445,10 @@ public final class AmqpServerFactory implements StreamFactory
     private final int closeTimeout;
     private final StringFW containerId;
     private final long defaultMaxFrameSize;
-    private final long initialDeliveryCount;
+    private final long defaultMaxMessageSize;
+    private final long defaultHandleMax;
     private final long defaultIdleTimeout;
+    private final StringFW[] defaultIncomingLocales;
 
     private final Map<AmqpPerformativeType, AmqpServerDecoder> decodersByPerformativeType;
     {
@@ -485,8 +508,10 @@ public final class AmqpServerFactory implements StreamFactory
         this.containerId = new String8FW(config.containerId());
         this.outgoingWindow = config.outgoingWindow();
         this.defaultMaxFrameSize = config.maxFrameSize();
+        this.defaultMaxMessageSize = config.maxMessageSize();
+        this.defaultHandleMax = config.handleMax();
         this.defaultIdleTimeout = config.idleTimeout();
-        this.initialDeliveryCount = config.initialDeliveryCount();
+        this.defaultIncomingLocales = asStringFWArray(config.incomingLocales());
         this.closeTimeout = config.closeExchangeTimeout();
         this.signaler = signaler;
     }
@@ -662,22 +687,22 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long streamId,
+        long sequence,
+        long acknowledge,
+        int maximum,
         long traceId,
-        long authorization,
         long budgetId,
-        int credit,
-        int padding,
-        int minimum)
+        int padding)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(streamId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
             .traceId(traceId)
-            .authorization(authorization)
             .budgetId(budgetId)
-            .credit(credit)
             .padding(padding)
-            .minimum(minimum)
             .build();
 
         receiver.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
@@ -975,6 +1000,7 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpOpenFW open = amqpOpenRO.tryWrap(buffer, offset, limit);
 
         int progress = offset;
+        int length = limit - offset;
 
         decode:
         if (open != null)
@@ -987,12 +1013,16 @@ public final class AmqpServerFactory implements StreamFactory
                 decodeError(server, traceId, authorization);
                 break decode;
             }
-
             server.onDecodeOpen(traceId, authorization, open);
-            server.decoder = decodePlainFrame;
             progress = open.limit();
         }
-
+        else if (length >= server.decodableBodyBytes)
+        {
+            server.connectionState = server.connectionState.receivedOpen();
+            server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+            progress = limit;
+        }
+        server.decoder = decodePlainFrame;
         return progress;
     }
 
@@ -1008,6 +1038,7 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpBeginFW begin = amqpBeginRO.tryWrap(buffer, offset, limit);
 
         int progress = offset;
+        int length = limit - offset;
 
         decode:
         if (begin != null)
@@ -1018,10 +1049,14 @@ public final class AmqpServerFactory implements StreamFactory
                 server.decoder = decodeIgnoreAll;
                 break decode;
             }
-
-            server.decoder = decodePlainFrame;
             progress = begin.limit();
         }
+        else if (length >= server.decodableBodyBytes)
+        {
+            server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+            progress = limit;
+        }
+        server.decoder = decodePlainFrame;
 
         return progress;
     }
@@ -1038,14 +1073,19 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpAttachFW attach = amqpAttachRO.tryWrap(buffer, offset, limit);
 
         int progress = offset;
+        int length = limit - offset;
 
         if (attach != null)
         {
             server.onDecodeAttach(traceId, authorization, attach);
-            server.decoder = decodePlainFrame;
-
             progress = attach.limit();
         }
+        else if (length >= server.decodableBodyBytes)
+        {
+            server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+            progress = limit;
+        }
+        server.decoder = decodePlainFrame;
 
         return progress;
     }
@@ -1062,14 +1102,19 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpFlowFW flow = amqpFlowRO.tryWrap(buffer, offset, limit);
 
         int progress = offset;
+        int length = limit - offset;
 
         if (flow != null)
         {
             server.onDecodeFlow(traceId, authorization, flow);
-            server.decoder = decodePlainFrame;
-
             progress = flow.limit();
         }
+        else if (length >= server.decodableBodyBytes)
+        {
+            server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+            progress = limit;
+        }
+        server.decoder = decodePlainFrame;
 
         return progress;
     }
@@ -1103,18 +1148,28 @@ public final class AmqpServerFactory implements StreamFactory
                 if (!sender.fragmented)
                 {
                     assert deliveryId != NO_DELIVERY_ID; // TODO: error
-                    assert deliveryId == session.remoteDeliveryId + 1; // TODO: error
-                    session.remoteDeliveryId = deliveryId;
+                    session.remoteDeliveryId = sequenceNext(session.remoteDeliveryId);
+                    if (deliveryId != session.remoteDeliveryId)
+                    {
+                        server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+                        progress = limit;
+                        server.decoder = decodePlainFrame;
+                        break decode;
+                    }
                 }
 
-                if (deliveryId != NO_DELIVERY_ID && deliveryId != session.remoteDeliveryId) // TODO: error
-                {
-                    break decode;
-                }
                 server.decodableBodyBytes -= transfer.sizeof();
                 final int fragmentOffset = transfer.limit();
                 final int fragmentSize = server.decodableBodyBytes;
                 final int fragmentLimit = fragmentOffset + fragmentSize;
+
+                if (deliveryId != NO_DELIVERY_ID && deliveryId != session.remoteDeliveryId)
+                {
+                    server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+                    progress = fragmentLimit;
+                    server.decoder = decodePlainFrame;
+                    break decode;
+                }
 
                 assert fragmentLimit <= limit;
 
@@ -1160,14 +1215,20 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpDetachFW detach = amqpDetachRO.tryWrap(buffer, offset, limit);
 
         int progress = offset;
+        int length = limit - offset;
 
         if (detach != null)
         {
             server.onDecodeDetach(traceId, authorization, detach);
-            server.decoder = decodePlainFrame;
 
             progress = detach.limit();
         }
+        else if (length >= server.decodableBodyBytes)
+        {
+            server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+            progress = limit;
+        }
+        server.decoder = decodePlainFrame;
 
         return progress;
     }
@@ -1184,14 +1245,20 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpEndFW end = amqpEndRO.tryWrap(buffer, offset, limit);
 
         int progress = offset;
+        int length = limit - offset;
 
         if (end != null)
         {
             server.onDecodeEnd(traceId, authorization, end);
-            server.decoder = decodePlainFrame;
 
             progress = end.limit();
         }
+        else if (length >= server.decodableBodyBytes)
+        {
+            server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+            progress = limit;
+        }
+        server.decoder = decodePlainFrame;
 
         return progress;
     }
@@ -1208,6 +1275,7 @@ public final class AmqpServerFactory implements StreamFactory
         final AmqpCloseFW close = amqpCloseRO.tryWrap(buffer, offset, limit);
 
         int progress = offset;
+        int length = limit - offset;
 
         decode:
         if (close != null)
@@ -1220,10 +1288,15 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             server.onDecodeClose(traceId, authorization);
-            server.decoder = decodePlainFrame;
 
             progress = close.limit();
         }
+        else if (length >= server.decodableBodyBytes)
+        {
+            server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+            progress = limit;
+        }
+        server.decoder = decodePlainFrame;
 
         return progress;
     }
@@ -1345,6 +1418,7 @@ public final class AmqpServerFactory implements StreamFactory
         private int decodeChannel;
         private int outgoingChannel;
         private int decodableBodyBytes;
+        private long decodeHandleMax;
         private long decodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private int encodeMaxFrameSize = MIN_MAX_FRAME_SIZE;
         private long writeIdleTimeout = DEFAULT_IDLE_TIMEOUT;
@@ -1382,6 +1456,7 @@ public final class AmqpServerFactory implements StreamFactory
             this.sessions = new Int2ObjectHashMap<>();
             this.hasSaslOutcome = false;
             this.decodeMaxFrameSize = defaultMaxFrameSize;
+            this.decodeHandleMax = defaultHandleMax;
             this.connectionState = START;
         }
 
@@ -1419,7 +1494,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             StringFW mechanisms)
         {
-            Array8FW<AmqpSymbolFW> annonymousRO = annonymousRW.wrap(extraBuffer, 0, extraBuffer.capacity())
+            Array8FW<AmqpSymbolFW> annonymousRO = anonymousRW.wrap(extraBuffer, 0, extraBuffer.capacity())
                 .item(i -> i.set(mechanisms))
                 .build();
 
@@ -1485,6 +1560,17 @@ public final class AmqpServerFactory implements StreamFactory
                 builder.idleTimeOut(defaultIdleTimeout);
             }
 
+            if (defaultIncomingLocales.length > 0 && !Arrays.equals(defaultIncomingLocales, DEFAULT_INCOMING_LOCALES))
+            {
+                Array8FW.Builder<AmqpIETFLanguageTagFW.Builder, AmqpIETFLanguageTagFW> incomingLocales =
+                        incomingLocalesRW.wrap(extraBuffer, 0, extraBuffer.capacity());
+                for (StringFW incomingLocale : defaultIncomingLocales)
+                {
+                    incomingLocales.item(i -> i.set(incomingLocale));
+                }
+                builder.incomingLocales(incomingLocales.build());
+            }
+
             final AmqpOpenFW open = builder.build();
 
             final int size = FRAME_HEADER_SIZE + performativeSize + open.sizeof();
@@ -1513,12 +1599,19 @@ public final class AmqpServerFactory implements StreamFactory
             final int performativeSize = beginType.sizeof();
             frameBuffer.putBytes(FRAME_HEADER_SIZE, beginType.buffer(), 0, performativeSize);
 
-            final AmqpBeginFW begin = amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
-                .remoteChannel(remoteChannel)
-                .nextOutgoingId(nextOutgoingId)
-                .incomingWindow(bufferPool.slotCapacity())
-                .outgoingWindow(outgoingWindow)
-                .build();
+            final AmqpBeginFW.Builder builder =
+                amqpBeginRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
+                    .remoteChannel(remoteChannel)
+                    .nextOutgoingId(nextOutgoingId)
+                    .incomingWindow(bufferPool.slotCapacity())
+                    .outgoingWindow(outgoingWindow);
+
+            if (decodeHandleMax != DEFAULT_VALUE_HANDLE_MAX)
+            {
+                builder.handleMax(decodeHandleMax);
+            }
+
+            final AmqpBeginFW begin = builder.build();
 
             final int size = FRAME_HEADER_SIZE + performativeSize + begin.sizeof();
 
@@ -1548,7 +1641,8 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpReceiverSettleMode receiverSettleMode,
             StringFW addressFrom,
             StringFW addressTo,
-            long deliveryCount)
+            long deliveryCount,
+            long maxMessageSize)
         {
             final int performativeSize = attachType.sizeof();
             frameBuffer.putBytes(FRAME_HEADER_SIZE, attachType.buffer(), 0, performativeSize);
@@ -1596,6 +1690,11 @@ public final class AmqpServerFactory implements StreamFactory
                 builder.initialDeliveryCount(deliveryCount);
             }
 
+            if (maxMessageSize > 0)
+            {
+                builder.maxMessageSize(maxMessageSize);
+            }
+
             final AmqpAttachFW attach = builder.build();
 
             final int size = FRAME_HEADER_SIZE + performativeSize + attach.sizeof();
@@ -1620,7 +1719,7 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             int channel,
             int nextOutgoingId,
-            int nextIncomingId,
+            long nextIncomingId,
             long incomingWindow,
             long handle,
             long deliveryCount,
@@ -1629,15 +1728,21 @@ public final class AmqpServerFactory implements StreamFactory
             final int performativeSize = flowType.sizeof();
             frameBuffer.putBytes(FRAME_HEADER_SIZE, flowType.buffer(), 0, performativeSize);
 
-            final AmqpFlowFW flow = amqpFlowRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
-                .nextIncomingId(nextIncomingId)
-                .incomingWindow(incomingWindow)
-                .nextOutgoingId(nextOutgoingId)
-                .outgoingWindow(outgoingWindow)
-                .handle(handle)
-                .deliveryCount(deliveryCount)
-                .linkCredit(linkCredit)
-                .build();
+            final AmqpFlowFW.Builder builder =
+                amqpFlowRW.wrap(frameBuffer, FRAME_HEADER_SIZE + performativeSize, frameBuffer.capacity())
+                    .nextIncomingId(nextIncomingId)
+                    .incomingWindow(incomingWindow)
+                    .nextOutgoingId(nextOutgoingId)
+                    .outgoingWindow(outgoingWindow);
+
+            if (handle >= 0)
+            {
+                builder.handle(handle)
+                    .deliveryCount(deliveryCount)
+                    .linkCredit(linkCredit);
+            }
+
+            final AmqpFlowFW flow = builder.build();
 
             final int size = FRAME_HEADER_SIZE + performativeSize + flow.sizeof();
 
@@ -2414,6 +2519,7 @@ public final class AmqpServerFactory implements StreamFactory
             // TODO: use buffer slot capacity instead
             this.encodeMaxFrameSize = (int) Math.min(replySharedBudget, open.maxFrameSize());
             this.writeIdleTimeout = open.hasIdleTimeOut() ? open.idleTimeOut() : DEFAULT_IDLE_TIMEOUT;
+
             if (writeIdleTimeout > 0)
             {
                 if (writeIdleTimeout < MIN_IDLE_TIMEOUT)
@@ -2444,7 +2550,7 @@ public final class AmqpServerFactory implements StreamFactory
                 else
                 {
                     session.outgoingChannel(outgoingChannel);
-                    session.nextIncomingId((int) begin.nextOutgoingId());
+                    session.nextIncomingId(begin.nextOutgoingId());
                     session.incomingWindow(writeBuffer.capacity());
                     session.outgoingWindow(outgoingWindow);
                     session.remoteIncomingWindow((int) begin.incomingWindow());
@@ -2461,8 +2567,22 @@ public final class AmqpServerFactory implements StreamFactory
             AmqpAttachFW attach)
         {
             AmqpSession session = sessions.get(decodeChannel);
+            decode:
             if (session != null)
             {
+                final long handle = attach.handle();
+                if (handle > decodeHandleMax)
+                {
+                    onDecodeError(traceId, authorization, CONNECTION_FRAMING_ERROR, null);
+                    break decode;
+                }
+
+                final boolean handleInUse = session.links.containsKey(handle);
+                if (handleInUse)
+                {
+                    onDecodeError(traceId, authorization, SESSION_HANDLE_IN_USE, null);
+                    break decode;
+                }
                 session.onDecodeAttach(traceId, authorization, attach);
             }
             else
@@ -2518,7 +2638,10 @@ public final class AmqpServerFactory implements StreamFactory
                 error = detach.error().errorList().condition();
             }
             AmqpSession session = sessions.get(decodeChannel);
-            session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            if (session != null)
+            {
+                session.onDecodeDetach(traceId, authorization, error, detach.handle());
+            }
         }
 
         private void onDecodeEnd(
@@ -2719,9 +2842,10 @@ public final class AmqpServerFactory implements StreamFactory
             private final int incomingChannel;
 
             private long deliveryId = NO_DELIVERY_ID;
+            private long abortedDeliveryId = NO_DELIVERY_ID;
             private long remoteDeliveryId = NO_DELIVERY_ID;
             private int outgoingChannel;
-            private int nextIncomingId;
+            private long nextIncomingId;
             private int incomingWindow;
             private int nextOutgoingId;
             private int outgoingWindow;
@@ -2746,7 +2870,7 @@ public final class AmqpServerFactory implements StreamFactory
             }
 
             private void nextIncomingId(
-                int nextOutgoingId)
+                long nextOutgoingId)
             {
                 this.nextIncomingId = nextOutgoingId;
             }
@@ -2840,6 +2964,10 @@ public final class AmqpServerFactory implements StreamFactory
                         AmqpServerStream link = new AmqpServerStream(addressFrom, addressTo, role, route);
                         AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
+                        if (sourceList != null)
+                        {
+                            link.sourceDurable = sourceList.hasDurable() && sourceList.durable().value() > 0;
+                        }
                         link.onDecodeAttach(traceId, authorization, attach);
                     }
                     else
@@ -2856,28 +2984,50 @@ public final class AmqpServerFactory implements StreamFactory
             {
                 int flowNextIncomingId = (int) flow.nextIncomingId();
                 int flowIncomingWindow = (int) flow.incomingWindow();
-                int flowNextOutgoingId = (int) flow.nextOutgoingId();
+                long flowNextOutgoingId = flow.nextOutgoingId();
                 int flowOutgoingWindow = (int) flow.outgoingWindow();
-                assert flow.hasHandle() == flow.hasDeliveryCount();
-                assert flow.hasHandle() == flow.hasLinkCredit();
+                boolean hasHandle = flow.hasHandle();
+                boolean echo = flow.echo() != 0;
+                boolean hasLinkCredit = flow.hasLinkCredit();
+                boolean hasDeliveryCount = flow.hasDeliveryCount();
+
+                decode:
+                if (hasHandle)
+                {
+                    long handle = flow.handle();
+                    long deliveryCount = flow.deliveryCount();
+                    int linkCredit = (int) flow.linkCredit();
+
+                    AmqpServerStream attachedLink = links.get(handle);
+                    if (attachedLink == null)
+                    {
+                        onDecodeError(traceId, authorization, SESSION_UNATTACHED_HANDLE);
+                        break decode;
+                    }
+
+                    if (attachedLink.detachError != null)
+                    {
+                        break decode;
+                    }
+
+                    attachedLink.onDecodeFlow(traceId, authorization, deliveryCount, linkCredit, echo);
+                }
+                else if (hasLinkCredit || hasDeliveryCount)
+                {
+                    AmqpServer.this.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+                    return;
+                }
+                else if (echo)
+                {
+                    doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
+                        -1, -1, -1);
+                }
 
                 this.nextIncomingId = flowNextOutgoingId;
                 this.remoteIncomingWindow = flowNextIncomingId + flowIncomingWindow - nextOutgoingId;
                 this.remoteOutgoingWindow = flowOutgoingWindow;
 
                 flushReplySharedBudget(traceId);
-
-                decode:
-                if (flow.hasHandle())
-                {
-                    AmqpServerStream attachedLink = links.get(flow.handle());
-                    if (attachedLink.detachError != null)
-                    {
-                        onDecodeError(traceId, authorization, SESSION_ERRANT_LINK);
-                        break decode;
-                    }
-                    attachedLink.onDecodeFlow(traceId, authorization, flow.deliveryCount(), (int) flow.linkCredit());
-                }
             }
 
             private void onDecodeTransfer(
@@ -2889,7 +3039,7 @@ public final class AmqpServerFactory implements StreamFactory
                 int offset,
                 int limit)
             {
-                this.nextIncomingId++;
+                this.nextIncomingId = sequenceNext(nextIncomingId);
                 this.remoteOutgoingWindow--;
                 this.incomingWindow--;
                 if (links.get(transfer.handle()).detachError != null)
@@ -2988,6 +3138,8 @@ public final class AmqpServerFactory implements StreamFactory
                 private AmqpRole role;
                 private StringFW addressFrom;
                 private StringFW addressTo;
+                private long decodeMaxMessageSize;
+                private long encodeMaxMessageSize;
 
                 private AmqpErrorType detachError;
 
@@ -2996,6 +3148,12 @@ public final class AmqpServerFactory implements StreamFactory
 
                 private AmqpSectionDecoder decoder;
                 private int decodableBytes;
+
+                private boolean sourceDurable;
+                private boolean headerDurable;
+
+                BoundedOctetsFW deliveryTag;
+                long messageFormat;
 
                 AmqpServerStream(
                     String addressFrom,
@@ -3011,6 +3169,7 @@ public final class AmqpServerFactory implements StreamFactory
                     this.initialId = supplyInitialId.applyAsLong(newRouteId);
                     this.replyId = supplyReplyId.applyAsLong(initialId);
                     this.application = router.supplyReceiver(initialId);
+                    this.decodeMaxMessageSize = defaultMaxMessageSize;
                 }
 
                 private void onDecodeAttach(
@@ -3020,6 +3179,7 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     this.name = attach.name().asString();
                     this.handle = attach.handle();
+                    this.encodeMaxMessageSize = attach.hasMaxMessageSize() ? attach.maxMessageSize() : 0;
 
                     final AmqpCapabilities capability = amqpCapabilities(role);
                     final AmqpSenderSettleMode amqpSenderSettleMode = attach.sndSettleMode();
@@ -3036,11 +3196,17 @@ public final class AmqpServerFactory implements StreamFactory
                 private void onDecodeFlow(
                     long traceId,
                     long authorization,
-                    long deliveryCount,
-                    int linkCredit)
+                    long decodeDeliveryCount,
+                    int decodeLinkCredit,
+                    boolean echo)
                 {
-                    this.linkCredit = (int) (deliveryCount + linkCredit - remoteDeliveryCount);
-                    this.remoteDeliveryCount = deliveryCount;
+                    if (echo)
+                    {
+                        doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
+                            handle, deliveryCount, remoteLinkCredit);
+                    }
+                    this.linkCredit = (int) (decodeDeliveryCount + decodeLinkCredit - remoteDeliveryCount);
+                    this.remoteDeliveryCount = decodeDeliveryCount;
                     flushReplyWindow(traceId, authorization);
                 }
 
@@ -3063,11 +3229,16 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!fragmented)
                     {
                         flags |= FLAG_INIT;
+                        if (more)
+                        {
+                            this.deliveryTag = deliveryTag;
+                            this.messageFormat = messageFormat;
+                        }
                     }
                     if (!more)
                     {
                         flags |= FLAG_FIN;
-                        deliveryCount++;
+                        deliveryCount = sequenceNext(deliveryCount);
                     }
 
                     int transferFlags = 0;
@@ -3078,14 +3249,10 @@ public final class AmqpServerFactory implements StreamFactory
 
                     OctetsFW payload = null;
                     Flyweight extension = EMPTY_OCTETS;
+                    int size = 0;
                     decode:
                     if (!fragmented)
                     {
-                        if (aborted)
-                        {
-                            break decode;
-                        }
-
                         this.remoteLinkCredit--;
                         if (remoteLinkCredit < 0)
                         {
@@ -3101,7 +3268,8 @@ public final class AmqpServerFactory implements StreamFactory
 
                         final OctetsFW messageFragment = amqpMessageDecodeHelper.decodeFragmentInit(this, buffer, offset, limit,
                             amqpDataEx);
-                        if (messageFragment.sizeof() > 0)
+                        size = messageFragment.sizeof();
+                        if (size > 0)
                         {
                             payload = messageFragment;
                         }
@@ -3110,24 +3278,32 @@ public final class AmqpServerFactory implements StreamFactory
                             .bodyKind(b -> b.set(decodeBodyKind))
                             .deferred(decodableBytes)
                             .build();
-
-                        doApplicationData(traceId, authorization, flags, reserved, payload, extension);
                     }
                     else
                     {
-                        if (aborted)
+                        OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
+                        size = messageFragment.sizeof();
+                        if (size > 0)
                         {
-                            payload = EMPTY_OCTETS;
+                            payload = messageFragment;
                         }
-                        else
-                        {
-                            OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
-                            if (messageFragment.sizeof() > 0)
-                            {
-                                payload = messageFragment;
-                            }
-                        }
+                    }
 
+                    if (!sourceDurable && headerDurable)
+                    {
+                        onDecodeError(traceId, authorization, PRECONDITION_FAILED);
+                    }
+                    else if (defaultMaxMessageSize > 0 && size > defaultMaxMessageSize)
+                    {
+                        onDecodeError(traceId, authorization, LINK_MESSAGE_SIZE_EXCEEDED);
+                    }
+                    else if (fragmented && ((deliveryTag != null && !this.deliveryTag.equals(deliveryTag)) ||
+                        this.messageFormat != messageFormat))
+                    {
+                        AmqpServer.this.onDecodeError(traceId, authorization, INVALID_FIELD, null);
+                    }
+                    else
+                    {
                         doApplicationData(traceId, authorization, flags, reserved, payload, extension);
                     }
 
@@ -3357,12 +3533,12 @@ public final class AmqpServerFactory implements StreamFactory
                         if (amqpRole == RECEIVER)
                         {
                             doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
-                                addressFrom, null, deliveryCount);
+                                addressFrom, null, deliveryCount, decodeMaxMessageSize);
                         }
                         else
                         {
                             doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, MIXED, FIRST,
-                                null, addressTo, deliveryCount);
+                                null, addressTo, deliveryCount, decodeMaxMessageSize);
                         }
                     }
 
@@ -3389,7 +3565,7 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpRole amqpRole = role == RECEIVER ? SENDER : RECEIVER;
                     AmqpSenderSettleMode amqpSenderSettleMode = MIXED;
                     AmqpReceiverSettleMode amqpReceiverSettleMode = FIRST;
-                    deliveryCount = initialDeliveryCount;
+                    deliveryCount = remoteDeliveryCount;
 
                     final AmqpBeginExFW amqpBeginEx = begin.extension().get(amqpBeginExRO::tryWrap);
                     if (amqpBeginEx != null)
@@ -3399,7 +3575,7 @@ public final class AmqpServerFactory implements StreamFactory
                     }
 
                     doEncodeAttach(traceId, authorization, name, outgoingChannel, handle, amqpRole, amqpSenderSettleMode,
-                        amqpReceiverSettleMode, addressFrom, addressTo, deliveryCount);
+                        amqpReceiverSettleMode, addressFrom, addressTo, deliveryCount, decodeMaxMessageSize);
 
                     flushInitialWindow(traceId, authorization);
                 }
@@ -3431,7 +3607,7 @@ public final class AmqpServerFactory implements StreamFactory
                         deliveryId++;
                         onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
                     }
-                    else
+                    else if (deliveryId != abortedDeliveryId)
                     {
                         onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
                     }
@@ -3480,11 +3656,19 @@ public final class AmqpServerFactory implements StreamFactory
                         transferBuilder.more(1);
                     }
 
-                    final AmqpTransferFW transfer = transferBuilder.build();
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
-                    final int fragmentSize = fragmentLimit - fragmentOffset;
+                    int fragmentSize = fragmentLimit - fragmentOffset;
+
+                    if (encodeMaxMessageSize > 0 && fragmentSize + deferred > encodeMaxMessageSize)
+                    {
+                        transferBuilder.aborted(1);
+                        abortedDeliveryId = deliveryId;
+                        fragmentSize = 0;
+                    }
+
+                    final AmqpTransferFW transfer = transferBuilder.build();
                     final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
                     if (frameSize <= encodeMaxFrameSize)
@@ -3525,7 +3709,6 @@ public final class AmqpServerFactory implements StreamFactory
                     OctetsFW payload)
                 {
                     final boolean more = (flags & FLAG_FIN) == 0;
-                    final boolean aborted = (flags & FLAG_INCOMPLETE) == FLAG_INCOMPLETE;
 
                     OctetsFW messageFragment = amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
 
@@ -3539,17 +3722,17 @@ public final class AmqpServerFactory implements StreamFactory
                         transferBuilder.more(1);
                     }
 
-                    final AmqpTransferFW transfer = transferBuilder.build();
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
                     final int fragmentOffset = messageFragment.offset();
                     final int fragmentLimit = messageFragment.limit();
-                    final int fragmentSize = !aborted ? fragmentLimit - fragmentOffset : 0;
+                    final int fragmentSize = fragmentLimit - fragmentOffset;
+                    final AmqpTransferFW transfer = transferBuilder.build();
                     final int frameSize = FRAME_HEADER_SIZE + performativeSize + transfer.sizeof() + fragmentSize;
 
                     if (frameSize <= encodeMaxFrameSize)
                     {
                         doEncodeTransfer(traceId, authorization, outgoingChannel, transfer,
-                                fragmentBuffer, fragmentOffset, fragmentSize);
+                            fragmentBuffer, fragmentOffset, fragmentSize);
                     }
                     else
                     {
@@ -3621,8 +3804,16 @@ public final class AmqpServerFactory implements StreamFactory
                         if (credit > 0)
                         {
                             replyBudget += credit;
-                            doWindow(application, newRouteId, replyId, traceId, authorization, replySharedBudgetId, credit,
-                                padding, maxFrameSize);
+                            doWindow(
+                                application,
+                                newRouteId,
+                                replyId,
+                                traceId,
+                                authorization,
+                                replySharedBudgetId,
+                                credit,
+                                padding,
+                                maxFrameSize);
                         }
                     }
                 }
@@ -3708,9 +3899,9 @@ public final class AmqpServerFactory implements StreamFactory
         private final AmqpMapFW.Builder<AmqpValueFW, AmqpValueFW, AmqpValueFW.Builder, AmqpValueFW.Builder> annotationsRW =
             new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
                 new AmqpValueFW.Builder());
-        private final AmqpMapFW.Builder<AmqpValueFW, AmqpValueFW, AmqpValueFW.Builder, AmqpValueFW.Builder>
-            applicationPropertiesRW = new AmqpMapFW.Builder<>(new AmqpValueFW(), new AmqpValueFW(), new AmqpValueFW.Builder(),
-            new AmqpValueFW.Builder());
+        private final AmqpApplicationPropertiesFW.Builder<AmqpSimpleTypeFW, AmqpSimpleTypeFW.Builder>
+            applicationPropertiesRW = new AmqpApplicationPropertiesFW.Builder<>(new AmqpStringFW(), new AmqpSimpleTypeFW(),
+            new AmqpStringFW.Builder(), new AmqpSimpleTypeFW.Builder());
 
         private AmqpSectionEncoder sectionEncoder;
         private int encodableBytes;
@@ -3976,17 +4167,15 @@ public final class AmqpServerFactory implements StreamFactory
         private void encodeApplicationProperty(
             AmqpApplicationPropertyFW item)
         {
-            int  valueOffset = 0;
-            AmqpStringFW key = amqpStringRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
-                .set(item.key())
-                .build();
-            valueOffset += key.sizeof();
+            final OctetsFW bytes = item.value().bytes();
+            DirectBuffer buffer = bytes.buffer();
+            int offset = bytes.offset();
+            int limit = bytes.limit();
 
-            AmqpStringFW value = amqpValueRW.wrap(valueBuffer, valueOffset, valueBuffer.capacity())
-                .set(item.value())
-                .build();
+            StringFW key =  item.key();
+            AmqpSimpleTypeFW value = amqpSimpleTypeRO.tryWrap(buffer, offset, limit);
 
-            applicationPropertiesRW.entry(k -> k.setAsAmqpString(key), v -> v.setAsAmqpString(value));
+            applicationPropertiesRW.entry(k -> k.set(key), v -> v.set(value));
         }
 
         private int encodeSectionData(
@@ -4309,7 +4498,7 @@ public final class AmqpServerFactory implements StreamFactory
         {
             stream.decodeBodyKind = null;
 
-            skipHeaders(buffer, offset, limit);
+            decodeHeaders(buffer, offset, limit, stream);
             skipDeliveryAnnotations(buffer, decodeOffset, limit);
             final Array32FW<AmqpAnnotationFW> annotations = decodeAnnotations(buffer, decodeOffset, limit);
             amqpDataEx.annotations(annotations);
@@ -4615,18 +4804,26 @@ public final class AmqpServerFactory implements StreamFactory
             return progress;
         }
 
-        private void skipHeaders(
+        private void decodeHeaders(
             DirectBuffer buffer,
             int offset,
-            int limit)
+            int limit,
+            AmqpServer.AmqpSession.AmqpServerStream stream)
         {
             this.decodeOffset = offset;
             final AmqpSectionTypeFW sectionType = amqpSectionTypeRO.tryWrap(buffer, offset, limit);
 
             if (sectionType != null && sectionType.get() == AmqpSectionType.HEADER)
             {
-                AmqpHeaderFW headers = headersRO.tryWrap(buffer, sectionType.limit(), limit);
-                this.decodeOffset = headers.limit();
+                AmqpHeaderFW header = headersRO.tryWrap(buffer, sectionType.limit(), limit);
+                assert header != null;
+
+                if (header.hasDurable() && header.durable() != 0)
+                {
+                    stream.headerDurable = true;
+                }
+
+                this.decodeOffset = header.limit();
             }
         }
 
@@ -4662,7 +4859,7 @@ public final class AmqpServerFactory implements StreamFactory
                 assert annotations != null;
                 this.decodeOffset = annotations.limit();
 
-                annotations.forEach(kv -> vv ->
+                annotations.forEach((kv, vv) ->
                 {
                     switch (kv.kind())
                     {
@@ -4769,14 +4966,14 @@ public final class AmqpServerFactory implements StreamFactory
 
             if (sectionType != null && sectionType.get() == AmqpSectionType.APPLICATION_PROPERTIES)
             {
-                AmqpMapFW<AmqpValueFW, AmqpValueFW> applicationProperty = applicationPropertyRO.tryWrap(buffer,
+                AmqpApplicationPropertiesFW<AmqpSimpleTypeFW> applicationProperty = applicationPropertiesRO.tryWrap(buffer,
                     sectionType.limit(), limit);
-                applicationProperty.forEach(kv -> vv ->
+
+                applicationProperty.forEach((k, v) ->
                 {
-                    String key = kv.getAsAmqpString().asString();
-                    String value = vv.getAsAmqpString().asString();
-                    // TODO: handle different type of values
-                    applicationPropertyBuilder.item(kb -> kb.key(key).value(value));
+                    String key = k.get().asString();
+                    applicationPropertyBuilder.item(kb -> kb.key(key)
+                                                            .value(i -> i.bytes(v.buffer(), v.offset(), v.sizeof())));
                 });
                 this.decodeOffset = applicationProperty.limit();
             }
@@ -4800,5 +4997,28 @@ public final class AmqpServerFactory implements StreamFactory
             }
             return progress;
         }
+    }
+
+    private static StringFW[] asStringFWArray(
+        String[] strings)
+    {
+        StringFW[] flyweights = EMPTY_STRINGFW_ARRAY;
+
+        if (strings.length != 0)
+        {
+            flyweights = asList(strings)
+                    .stream()
+                    .map(String8FW::new)
+                    .collect(toList())
+                    .toArray(new StringFW[strings.length]);
+        }
+
+        return flyweights;
+    }
+
+    private static long sequenceNext(
+        long value)
+    {
+        return (value + 1) & 0xFFFF_FFFFL;
     }
 }

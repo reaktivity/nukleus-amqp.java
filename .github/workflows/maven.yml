@@ -29,22 +29,27 @@ jobs:
         key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
         restore-keys: ${{ runner.os }}-m2
     - name: Build with Maven
-      run: ./mvnw -B -nsu verify
+      run: ./mvnw -B -nsu verify jacoco:report
     - name: Notify via Slack
       uses: 8398a7/action-slack@v3
       with:
         status: custom
-        fields: workflow,job,commit,repo,took
+        job_name: Build
+        fields: job,repo,author,took
         custom_payload: |
           {
-            username: 'GitHub Actions',
-            icon_url: 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png',
             attachments: [{
               color: '${{ job.status }}' === 'success' ? 'good' : '${{ job.status }}' === 'failure' ? 'danger' : 'warning',
-              text: `${process.env.AS_WORKFLOW} JDK ${{ matrix.java }}\nBuild <https://github.com/${{github.repository}}/runs/${{github.run_number}}|${{github.run_number}}> (${process.env.AS_COMMIT}) of ${process.env.AS_REPO} by ${{github.actor}} ${{job.status}} in ${process.env.AS_TOOK}`,
+              text: `${process.env.AS_JOB} of ${process.env.AS_REPO} by ${process.env.AS_AUTHOR.replace(/\<.*\>/, '')} completed in ${process.env.AS_TOOK}`,
             }]
           }
       env:
         GITHUB_TOKEN: ${{ github.token }}
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      if: always()
+        MATRIX_CONTEXT: ${{ toJson(matrix) }}
+      if: ${{ env.SLACK_WEBHOOK_URL != null }}
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./target/site/jacoco/jacoco.xml
+      if: ${{ github.event_name != 'pull_request' }}

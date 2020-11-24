@@ -1058,17 +1058,6 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${client}/link/transfer.to.server.with.application.properties/client",
-        "${server}/send.to.server.with.application.properties/server" })
-    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
-    public void shouldSendToServerWithApplicationProperties() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-        "${route}/server/controller",
         "${client}/link/transfer.to.server.with.footer/client",
         "${server}/send.to.server.with.footer/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
@@ -1180,16 +1169,6 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.with.properties/client",
         "${server}/send.to.client.with.properties/server" })
     public void shouldSendToClientWithProperties() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-        "${route}/server/controller",
-        "${client}/link/transfer.to.client.with.application.properties/client",
-        "${server}/send.to.client.with.application.properties/server" })
-    public void shouldSendToClientWithApplicationProperties() throws Exception
     {
         k3po.finish();
     }
@@ -1409,6 +1388,151 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/open.with.outgoing.locales.negotiated.default/client" })
+    public void shouldSendOpenWithOutgoingLocalesNegotiatedDefault() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/open.with.outgoing.locales.negotiated.non.default/client" })
+    @Configure(name = "nukleus.amqp.incoming.locales", value = "jp")
+    public void shouldOpenWithOutgoingLocakesNegotiatedNonDefault() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/attach.as.receiver.then.detach.with.error.then.flow/client",
+        "${server}/connect.and.reset/server" })
+    public void shouldNotTriggerErrorWhenReceivingFlowAfterDetach() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/handle.max.exceeded/client" })
+    @Configure(name = "nukleus.amqp.handle.max", value = "10")
+    public void shouldCloseConnectionWhenHandleMaxExceeded() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.attach.when.handle.in.use/client",
+        "${server}/connect.as.receiver.then.abort/server" })
+    public void shouldCloseConnectionWhenAttachWithHandleInUse() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.max.message.size.exceeded/client",
+        "${server}/send.to.client.with.vbin32/server" })
+    public void shouldSendToClientAndHandleMaxMessageSize() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.max.message.size.exceeded/client",
+        "${server}/connect.as.sender.then.abort/server" })
+    @Configure(name = "nukleus.amqp.max.message.size", value = "100")
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerAndHandleMaxMessageSize() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.then.flow.with.echo.on.link/client",
+        "${server}/send.to.server.then.flow.with.echo/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerThenFlowWithEchoOnLink() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.then.flow.with.echo.on.session/client",
+        "${server}/send.to.server.then.flow.with.echo/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerThenFlowWithEchoOnSession() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.flow.with.inconsistent.fields/client",
+        "${server}/connect.as.receiver.then.abort/server" })
+    public void shouldCloseConnectionWhenFlowHasInconsistentFields() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/flow.without.handle/client",
+        "${server}/send.to.client.with.str8utf8/server" })
+    public void shouldAllowFlowWithoutHandle() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/flow.with.unattached.handle/client",
+        "${server}/connect.as.receiver.then.abort/server" })
+    public void shouldEndSessionWhenFlowWithUnattachedHandle() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.large.delivery.count/client",
+        "${server}/send.to.server.with.large.delivery.count/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithLargeDeliveryCount() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.transfer.with.more.inconsistent.fields/client",
+        "${server}/abort.after.sending.first.fragment/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldCloseConnectionWhenTransferWithMoreAndInconsistentFields() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
@@ -1417,6 +1541,17 @@ public class AmqpServerIT
         "${server}/send.to.server.when.middle.fragment.aborted/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerWhenMiddleFragmentAborted() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.large.next.incoming.id/client",
+        "${server}/send.to.server.with.str8utf8/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithLargeNextIncomingId() throws Exception
     {
         k3po.finish();
     }
@@ -1433,6 +1568,17 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.invalid.delivery.id/client",
+        "${server}/send.to.server.with.invalid.delivery.id/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithInvalidDeliveryId() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
@@ -1440,6 +1586,15 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.when.first.fragment.aborted/client",
         "${server}/send.to.client.when.first.fragment.aborted/server" })
     public void shouldSendToClientWhenFirstFragmentAborted() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/connection/reject.incorrect.fields.key.type/client" })
+    public void shouldRejectIncorrectFieldsKeyType() throws Exception
     {
         k3po.finish();
     }
@@ -1455,6 +1610,16 @@ public class AmqpServerIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.with.application.properties/client",
+        "${server}/send.to.client.with.application.properties/server" })
+    public void shouldSendToClientWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
     @Ignore
     @Test
     @Specification({
@@ -1462,6 +1627,28 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.when.last.fragment.aborted/client",
         "${server}/send.to.client.when.last.fragment.aborted/server" })
     public void shouldSendToClientWhenLastFragmentAborted() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.with.application.properties/client",
+        "${server}/send.to.server.with.application.properties/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/reject.durable.message.when.durable.not.supported/client",
+        "${server}/connect.as.sender.then.abort/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldRejectDurableMessageWhenDurableNotSupported() throws Exception
     {
         k3po.finish();
     }
