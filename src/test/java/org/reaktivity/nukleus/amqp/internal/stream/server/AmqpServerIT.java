@@ -1376,7 +1376,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
@@ -1533,7 +1532,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
@@ -1556,7 +1554,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
@@ -1579,7 +1576,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
@@ -1599,7 +1595,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",
@@ -1620,7 +1615,6 @@ public class AmqpServerIT
         k3po.finish();
     }
 
-    @Ignore
     @Test
     @Specification({
         "${route}/server/controller",

@@ -191,6 +191,7 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int FLAG_FIN = 1;
     private static final int FLAG_INIT = 2;
     private static final int FLAG_INCOMPLETE = 4;
+    private static final int FLAG_INIT_INCOMPLETE = 6;
     private static final int FLAG_INIT_AND_FIN = 3;
     private static final int FRAME_HEADER_SIZE = 8;
     private static final int SASL_DESCRIPTOR_SIZE = 3;
@@ -687,22 +688,22 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long streamId,
-        long sequence,
-        long acknowledge,
-        int maximum,
         long traceId,
+        long authorization,
         long budgetId,
-        int padding)
+        int credit,
+        int padding,
+        int minimum)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(streamId)
-            .sequence(sequence)
-            .acknowledge(acknowledge)
-            .maximum(maximum)
             .traceId(traceId)
+            .authorization(authorization)
             .budgetId(budgetId)
+            .credit(credit)
             .padding(padding)
+            .minimum(minimum)
             .build();
 
         receiver.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
@@ -1148,6 +1149,12 @@ public final class AmqpServerFactory implements StreamFactory
                 if (!sender.fragmented)
                 {
                     assert deliveryId != NO_DELIVERY_ID; // TODO: error
+                    if (transfer.hasAborted() && transfer.aborted() == 1)
+                    {
+                        progress = limit;
+                        server.decoder = decodePlainFrame;
+                        break decode;
+                    }
                     session.remoteDeliveryId = sequenceNext(session.remoteDeliveryId);
                     if (deliveryId != session.remoteDeliveryId)
                     {
@@ -3235,7 +3242,11 @@ public final class AmqpServerFactory implements StreamFactory
                             this.messageFormat = messageFormat;
                         }
                     }
-                    if (!more)
+                    if (aborted)
+                    {
+                        flags = FLAG_INCOMPLETE;
+                    }
+                    if (!more && !aborted)
                     {
                         flags |= FLAG_FIN;
                         deliveryCount = sequenceNext(deliveryCount);
@@ -3281,9 +3292,10 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                     else
                     {
-                        OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
+                        OctetsFW messageFragment =  aborted ? EMPTY_OCTETS :
+                            amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
                         size = messageFragment.sizeof();
-                        if (size > 0)
+                        if (size >= 0)
                         {
                             payload = messageFragment;
                         }
@@ -3599,17 +3611,24 @@ public final class AmqpServerFactory implements StreamFactory
                         doNetworkAbort(traceId, authorization);
                     }
 
-                    nextOutgoingId++;
-                    outgoingWindow--;
+                    if ((flags & FLAG_INIT_INCOMPLETE) != FLAG_INIT_INCOMPLETE)
+                    {
+                        nextOutgoingId++;
+                        outgoingWindow--;
 
-                    if ((flags & FLAG_INIT) == FLAG_INIT)
-                    {
-                        deliveryId++;
-                        onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
+                        if ((flags & FLAG_INIT) == FLAG_INIT)
+                        {
+                            deliveryId++;
+                            onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
+                        }
+                        else if (deliveryId != abortedDeliveryId)
+                        {
+                            onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
+                        }
                     }
-                    else if (deliveryId != abortedDeliveryId)
+                    else
                     {
-                        onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
+                        flushReplySharedBudget(traceId);
                     }
                 }
 
@@ -3708,9 +3727,10 @@ public final class AmqpServerFactory implements StreamFactory
                     int flags,
                     OctetsFW payload)
                 {
-                    final boolean more = (flags & FLAG_FIN) == 0;
+                    final boolean aborted = (flags & FLAG_INCOMPLETE) == FLAG_INCOMPLETE;
+                    final boolean more = (flags & FLAG_FIN) == 0 && !aborted;
 
-                    OctetsFW messageFragment = amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
+                    OctetsFW messageFragment = aborted ? EMPTY_OCTETS : amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
 
                     final int performativeSize = transferType.sizeof();
                     final AmqpTransferFW.Builder transferBuilder = amqpTransferRW
@@ -3720,6 +3740,10 @@ public final class AmqpServerFactory implements StreamFactory
                     if (more)
                     {
                         transferBuilder.more(1);
+                    }
+                    if (aborted)
+                    {
+                        transferBuilder.aborted(1);
                     }
 
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
@@ -3804,16 +3828,8 @@ public final class AmqpServerFactory implements StreamFactory
                         if (credit > 0)
                         {
                             replyBudget += credit;
-                            doWindow(
-                                application,
-                                newRouteId,
-                                replyId,
-                                traceId,
-                                authorization,
-                                replySharedBudgetId,
-                                credit,
-                                padding,
-                                maxFrameSize);
+                            doWindow(application, newRouteId, replyId, traceId, authorization, replySharedBudgetId, credit,
+                                padding, maxFrameSize);
                         }
                     }
                 }
