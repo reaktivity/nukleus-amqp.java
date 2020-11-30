@@ -686,20 +686,24 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long streamId,
+        long sequence,
+        long acknowledge,
+        int maximum,
         long traceId,
         long authorization,
         long budgetId,
-        int credit,
         int padding,
         int minimum)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(streamId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
             .traceId(traceId)
             .authorization(authorization)
             .budgetId(budgetId)
-            .credit(credit)
             .padding(padding)
             .minimum(minimum)
             .build();
