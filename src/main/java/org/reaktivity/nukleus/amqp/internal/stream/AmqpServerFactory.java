@@ -168,6 +168,7 @@ import org.reaktivity.nukleus.amqp.internal.types.stream.AmqpDataExFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.EndFW;
+import org.reaktivity.nukleus.amqp.internal.types.stream.FlushFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.SignalFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.WindowFW;
@@ -211,6 +212,7 @@ public final class AmqpServerFactory implements StreamFactory
 
     private final BeginFW beginRO = new BeginFW();
     private final DataFW dataRO = new DataFW();
+    private final FlushFW flushRO = new FlushFW();
     private final EndFW endRO = new EndFW();
     private final AbortFW abortRO = new AbortFW();
     private final WindowFW windowRO = new WindowFW();
@@ -221,6 +223,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final DataFW.Builder dataRW = new DataFW.Builder();
     private final EndFW.Builder endRW = new EndFW.Builder();
     private final AbortFW.Builder abortRW = new AbortFW.Builder();
+    private final FlushFW.Builder flushRW = new FlushFW.Builder();
     private final WindowFW.Builder windowRW = new WindowFW.Builder();
     private final ResetFW.Builder resetRW = new ResetFW.Builder();
     private final SignalFW.Builder signalRW = new SignalFW.Builder();
@@ -399,7 +402,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpMessageDecoder amqpMessageDecodeHelper = new AmqpMessageDecoder();
 
     private final MutableInteger minimum = new MutableInteger(Integer.MAX_VALUE);
-    private final MutableInteger maximum = new MutableInteger(0);
+    private final MutableInteger max = new MutableInteger(0);
 
     private final Signaler signaler;
 
@@ -600,6 +603,9 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long replyId,
+        long sequence,
+        long acknowledge,
+        int maximum,
         long traceId,
         long authorization,
         long affinity,
@@ -608,6 +614,9 @@ public final class AmqpServerFactory implements StreamFactory
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(replyId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
             .traceId(traceId)
             .authorization(authorization)
             .affinity(affinity)
@@ -621,6 +630,9 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long replyId,
+        long sequence,
+        long acknowledge,
+        int maximum,
         long traceId,
         long authorization,
         int flags,
@@ -632,6 +644,9 @@ public final class AmqpServerFactory implements StreamFactory
         final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(replyId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
             .traceId(traceId)
             .authorization(authorization)
             .flags(flags)
@@ -648,6 +663,9 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long replyId,
+        long sequence,
+        long acknowledge,
+        int maximum,
         long traceId,
         long authorization,
         Flyweight extension)
@@ -655,6 +673,9 @@ public final class AmqpServerFactory implements StreamFactory
         final EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(replyId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
             .traceId(traceId)
             .authorization(authorization)
             .extension(extension.buffer(), extension.offset(), extension.sizeof())
@@ -667,6 +688,9 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long replyId,
+        long sequence,
+        long acknowledge,
+        int maximum,
         long traceId,
         long authorization,
         Flyweight extension)
@@ -674,12 +698,44 @@ public final class AmqpServerFactory implements StreamFactory
         final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
             .routeId(routeId)
             .streamId(replyId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
             .traceId(traceId)
             .authorization(authorization)
             .extension(extension.buffer(), extension.offset(), extension.sizeof())
             .build();
 
         receiver.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
+    }
+
+    private void doFlush(
+        MessageConsumer receiver,
+        long routeId,
+        long streamId,
+        long sequence,
+        long acknowledge,
+        int maximum,
+        long traceId,
+        long authorization,
+        long budgetId,
+        int reserved,
+        OctetsFW extension)
+    {
+        final FlushFW flush = flushRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+            .routeId(routeId)
+            .streamId(streamId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
+            .traceId(traceId)
+            .authorization(authorization)
+            .budgetId(budgetId)
+            .reserved(reserved)
+            .extension(extension)
+            .build();
+
+        receiver.accept(flush.typeId(), flush.buffer(), flush.offset(), flush.sizeof());
     }
 
     private void doWindow(
@@ -715,32 +771,24 @@ public final class AmqpServerFactory implements StreamFactory
         MessageConsumer receiver,
         long routeId,
         long streamId,
+        long sequence,
+        long acknowledge,
+        int maximum,
         long traceId,
         long authorization,
         Flyweight extension)
     {
         final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity()).routeId(routeId)
             .streamId(streamId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
             .traceId(traceId)
             .authorization(authorization)
             .extension(extension.buffer(), extension.offset(), extension.sizeof())
             .build();
 
         receiver.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
-    }
-
-    private void doSignal(
-        MessageConsumer receiver,
-        long routeId,
-        long streamId,
-        long traceId)
-    {
-        final SignalFW signal = signalRW.wrap(writeBuffer, 0, writeBuffer.capacity()).routeId(routeId)
-            .streamId(streamId)
-            .traceId(traceId)
-            .build();
-
-        receiver.accept(signal.typeId(), signal.buffer(), signal.offset(), signal.sizeof());
     }
 
     @FunctionalInterface
@@ -1176,8 +1224,8 @@ public final class AmqpServerFactory implements StreamFactory
 
                 assert fragmentLimit <= limit;
 
-                int reserved = fragmentSize + sender.initialPadding;
-                boolean canSend = reserved <= sender.initialBudget;
+                int reserved = fragmentSize + sender.initialPad;
+                boolean canSend = reserved <= sender.initialMax;
 
                 if (canSend && sender.debitorIndex != NO_DEBITOR_INDEX)
                 {
@@ -1401,9 +1449,16 @@ public final class AmqpServerFactory implements StreamFactory
 
         private final Int2ObjectHashMap<AmqpSession> sessions;
 
-        private int initialBudget;
-        private int replyBudget;
-        private int replyPadding;
+        private long initialSeq;
+        private long initialAck;
+        private int initialMax;
+        private int initialPad;
+
+        private long replySeq;
+        private long replyAck;
+        private int replyMax;
+        private int replyPad;
+        private long replyBudgetId;
 
         private long replyBudgetIndex = NO_CREDITOR_INDEX;
         private int replySharedBudget;
@@ -1463,6 +1518,16 @@ public final class AmqpServerFactory implements StreamFactory
             this.connectionState = START;
         }
 
+        private int replyPendingAck()
+        {
+            return (int)(replySeq - replyAck) + encodeSlotOffset;
+        }
+
+        private int replyWindow()
+        {
+            return replyMax - replyPendingAck();
+        }
+
         private void doEncodePlainProtocolHeader(
             long traceId,
             long authorization)
@@ -1474,7 +1539,7 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization)
         {
-            replyBudgetReserved += plainProtocolHeader.sizeof() + replyPadding;
+            replyBudgetReserved += plainProtocolHeader.sizeof() + replyPad;
             if (!hasSaslOutcome)
             {
                 doEncodePlainProtocolHeader(traceId, authorization);
@@ -1487,7 +1552,7 @@ public final class AmqpServerFactory implements StreamFactory
             long traceId,
             long authorization)
         {
-            replyBudgetReserved += saslProtocolHeader.sizeof() + replyPadding;
+            replyBudgetReserved += saslProtocolHeader.sizeof() + replyPad;
             doNetworkData(traceId, authorization, 0L, saslProtocolHeader);
             doEncodeSaslMechanisms(traceId, authorization, anonymous);
         }
@@ -1511,7 +1576,7 @@ public final class AmqpServerFactory implements StreamFactory
                 .security(b -> b.saslMechanisms(saslMechanisms))
                 .build();
 
-            replyBudgetReserved += saslFrameHeader.sizeof() + replyPadding;
+            replyBudgetReserved += saslFrameHeader.sizeof() + replyPad;
             doNetworkData(traceId, authorization, 0L, saslFrameHeader);
         }
 
@@ -1531,7 +1596,7 @@ public final class AmqpServerFactory implements StreamFactory
                     .security(b -> b.saslOutcome(saslOutcome))
                     .build();
 
-            replyBudgetReserved += saslFrameHeader.sizeof() + replyPadding;
+            replyBudgetReserved += saslFrameHeader.sizeof() + replyPad;
             doNetworkData(traceId, authorization, 0L, saslFrameHeader);
         }
 
@@ -1589,7 +1654,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += payload.sizeof() + replyPadding;
+            replyBudgetReserved += payload.sizeof() + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -1629,7 +1694,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += payload.sizeof() + replyPadding;
+            replyBudgetReserved += payload.sizeof() + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -1713,7 +1778,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += payload.sizeof() + replyPadding;
+            replyBudgetReserved += payload.sizeof() + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -1760,7 +1825,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             final OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += payload.sizeof() + replyPadding;
+            replyBudgetReserved += payload.sizeof() + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -1792,7 +1857,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += size + replyPadding;
+            replyBudgetReserved += size + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -1837,7 +1902,8 @@ public final class AmqpServerFactory implements StreamFactory
             int fragmentSizeFin = encodeMaxFrameSize - FRAME_HEADER_SIZE - performativeSize - transferFin.sizeof();
             assert fragmentRemaining <= fragmentSizeFin;
 
-            doEncodeTransfer(traceId, authorization, channel, transferFin, fragmentBuffer, fragmentProgress, fragmentRemaining);
+            doEncodeTransfer(traceId, authorization, channel, transferFin, fragmentBuffer,
+                fragmentProgress, fragmentRemaining);
             fragmentProgress += fragmentRemaining;
             assert fragmentProgress == fragmentLimit;
         }
@@ -1884,7 +1950,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += size + replyPadding;
+            replyBudgetReserved += size + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -1928,7 +1994,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += size + replyPadding;
+            replyBudgetReserved += size + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
         }
 
@@ -1974,7 +2040,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             OctetsFW payload = payloadRO.wrap(frameBuffer, 0, size);
 
-            replyBudgetReserved += size + replyPadding;
+            replyBudgetReserved += size + replyPad;
             doNetworkData(traceId, authorization, 0L, payload);
             doSignalCloseTimeout();
         }
@@ -2000,19 +2066,21 @@ public final class AmqpServerFactory implements StreamFactory
             int limit,
             int maxLimit)
         {
-            final int length = Math.max(Math.min(replyBudget - replyPadding, limit - offset), 0);
+            final int length = Math.max(Math.min(replyWindow() - replyPad, limit - offset), 0);
 
             if (length > 0)
             {
-                final int reserved = length + replyPadding;
-
-                replyBudget -= reserved;
-
-                assert replyBudget >= 0;
+                final int reserved = length + replyPad;
 
                 OctetsFW payload = payloadRO.wrap(buffer, offset, limit);
-                doData(network, routeId, replyId, traceId, authorization, FLAG_INIT_AND_FIN, budgetId, reserved,
-                    payload, EMPTY_OCTETS);
+                doData(network, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, FLAG_INIT_AND_FIN,
+                    budgetId, reserved, payload, EMPTY_OCTETS);
+
+                replySeq += reserved;
+
+                assert replySeq <= replyAck + replyMax :
+                    String.format("%d <= %d + %d", replySeq, replyAck, replyMax);
+
                 doSignalWriteIdleTimeoutIfNecessary();
             }
 
@@ -2075,6 +2143,10 @@ public final class AmqpServerFactory implements StreamFactory
                 final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                 onNetworkAbort(abort);
                 break;
+            case FlushFW.TYPE_ID:
+                final FlushFW flush = flushRO.wrap(buffer, index, index + length);
+                onNetworkFlush(flush);
+                break;
             case WindowFW.TYPE_ID:
                 final WindowFW window = windowRO.wrap(buffer, index, index + length);
                 onNetworkWindow(window);
@@ -2095,24 +2167,42 @@ public final class AmqpServerFactory implements StreamFactory
         private void onNetworkBegin(
             BeginFW begin)
         {
+            final long sequence = begin.sequence();
+            final long acknowledge = begin.acknowledge();
             final long traceId = begin.traceId();
             final long authorization = begin.authorization();
 
+            assert acknowledge <= sequence;
+            assert sequence >= initialSeq;
+            assert acknowledge >= initialAck;
+
             state = AmqpState.openingInitial(state);
+            initialSeq = sequence;
+            initialAck = acknowledge;
+
+            assert initialAck <= initialSeq;
 
             doNetworkBegin(traceId, authorization);
-            doNetworkWindow(traceId, authorization, bufferPool.slotCapacity(), 0, 0L);
+            doNetworkWindow(traceId, authorization, 0, bufferPool.slotCapacity(), 0L);
         }
 
         private void onNetworkData(
             DataFW data)
         {
+            final long sequence = data.sequence();
+            final long acknowledge = data.acknowledge();
             final long traceId = data.traceId();
             final long authorization = data.authorization();
 
-            initialBudget -= data.reserved();
+            assert acknowledge <= sequence;
+            assert sequence >= initialSeq;
+            assert acknowledge <= initialAck;
 
-            if (initialBudget < 0)
+            initialSeq = sequence + data.reserved();
+
+            assert initialAck <= initialSeq;
+
+            if (initialSeq > initialAck + bufferPool.slotCapacity())
             {
                 doNetworkReset(supplyTraceId.getAsLong(), authorization);
             }
@@ -2140,6 +2230,36 @@ public final class AmqpServerFactory implements StreamFactory
                 }
 
                 decodeNetwork(traceId, authorization, budgetId, reserved, buffer, offset, limit);
+            }
+        }
+
+        private void onNetworkFlush(
+            FlushFW flush)
+        {
+            final long sequence = flush.sequence();
+            final long acknowledge = flush.acknowledge();
+            final long traceId = flush.traceId();
+            final long authorization = flush.authorization();
+            final long budgetId = flush.budgetId();
+            final int reserved = flush.reserved();
+            final OctetsFW extension = flush.extension();
+
+            assert acknowledge <= sequence;
+            assert sequence >= initialSeq;
+            assert acknowledge <= initialAck;
+
+            initialSeq = sequence + flush.reserved();
+
+            assert initialAck <= initialSeq;
+
+            if (initialSeq > initialAck + bufferPool.slotCapacity())
+            {
+                doNetworkReset(supplyTraceId.getAsLong(), authorization);
+            }
+            else
+            {
+                sessions.values().forEach(s -> s.links.values().forEach(l -> l.doApplicationFlush(traceId, authorization,
+                    budgetId, reserved, extension)));
             }
         }
 
@@ -2177,20 +2297,30 @@ public final class AmqpServerFactory implements StreamFactory
         private void onNetworkWindow(
             WindowFW window)
         {
+            final long sequence = window.sequence();
+            final long acknowledge = window.acknowledge();
+            final int maximum = window.maximum();
             final long traceId = window.traceId();
             final long authorization = window.authorization();
             final long budgetId = window.budgetId();
-            int credit = window.credit();
             final int padding = window.padding();
 
-            state = AmqpState.openReply(state);
+            assert acknowledge <= sequence;
+            assert sequence <= replySeq;
+            assert acknowledge >= replyAck;
+            assert maximum >= replyMax;
 
-            replyBudget += credit;
-            replyPadding = padding;
+            state = AmqpState.openReply(state);
+            replyAck = acknowledge;
+            replyMax = maximum;
+            replyBudgetId = budgetId;
+            replyPad = padding;
+
+            assert replyAck <= replySeq;
 
             if (replyBudgetReserved > 0)
             {
-                final int reservedCredit = Math.min(credit, replyBudgetReserved);
+                final int reservedCredit = Math.min(replyMax, replyBudgetReserved);
                 replyBudgetReserved -= reservedCredit;
             }
 
@@ -2213,8 +2343,9 @@ public final class AmqpServerFactory implements StreamFactory
             minimum.value = Integer.MAX_VALUE;
             sessions.values().forEach(s -> minimum.value = Math.min(s.remoteIncomingWindow, minimum.value));
 
+            final int budget = replyWindow();
             final int replySharedBudgetMax = sessions.values().size() > 0 ?
-                Math.min(minimum.value * encodeMaxFrameSize, replyBudget) : replyBudget;
+                Math.min(minimum.value * encodeMaxFrameSize, budget) : budget;
             final int replySharedCredit = replySharedBudgetMax - Math.max(this.replySharedBudget, 0)
                 - Math.max(encodeSlotOffset, 0);
 
@@ -2225,7 +2356,7 @@ public final class AmqpServerFactory implements StreamFactory
                 this.replySharedBudget += replySharedCredit;
                 assert replySharedBudgetPrevious <= slotCapacity
                     : String.format("%d <= %d, replyBudget = %d",
-                    replySharedBudgetPrevious, slotCapacity, replyBudget);
+                    replySharedBudgetPrevious, slotCapacity, budget);
 
                 assert replySharedBudget <= slotCapacity
                     : String.format("%d <= %d", replySharedBudget, slotCapacity);
@@ -2326,11 +2457,11 @@ public final class AmqpServerFactory implements StreamFactory
         {
             state = AmqpState.openingReply(state);
 
-            doBegin(network, routeId, replyId, traceId, authorization, affinity, EMPTY_OCTETS);
+            doBegin(network, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, affinity, EMPTY_OCTETS);
             router.setThrottle(replyId, this::onNetwork);
 
-            assert replyBudgetIndex == NO_CREDITOR_INDEX;
-            this.replyBudgetIndex = creditor.acquire(replySharedBudgetId);
+            assert replyBudgetIndex == NO_CREDITOR_INDEX; // TODO: check if needed
+            this.replyBudgetIndex = creditor.acquire(replySharedBudgetId); // TODO: check if needed
         }
 
         private void doNetworkData(
@@ -2369,7 +2500,7 @@ public final class AmqpServerFactory implements StreamFactory
             cleanupBudgetCreditorIfNecessary();
             cleanupEncodeSlotIfNecessary();
 
-            doEnd(network, routeId, replyId, traceId, authorization, EMPTY_OCTETS);
+            doEnd(network, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, EMPTY_OCTETS);
         }
 
         private void doNetworkAbort(
@@ -2381,7 +2512,18 @@ public final class AmqpServerFactory implements StreamFactory
             cleanupBudgetCreditorIfNecessary();
             cleanupEncodeSlotIfNecessary();
 
-            doAbort(network, routeId, replyId, traceId, authorization, EMPTY_OCTETS);
+            doAbort(network, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, EMPTY_OCTETS);
+        }
+
+        private void doNetworkFlush(
+            long traceId,
+            long authorization,
+            long budgetId,
+            int reserved,
+            OctetsFW extension)
+        {
+            doFlush(network, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, budgetId, reserved,
+                extension);
         }
 
         private void doNetworkReset(
@@ -2392,22 +2534,20 @@ public final class AmqpServerFactory implements StreamFactory
 
             cleanupDecodeSlotIfNecessary();
 
-            doReset(network, routeId, initialId, traceId, authorization, EMPTY_OCTETS);
+            doReset(network, routeId, initialId, initialSeq, initialAck, bufferPool.slotCapacity(), traceId, authorization,
+                EMPTY_OCTETS);
         }
 
         private void doNetworkWindow(
             long traceId,
             long authorization,
-            int credit,
             int padding,
+            int maximum,
             long budgetId)
         {
-            assert credit > 0;
-
             state = AmqpState.openInitial(state);
 
-            initialBudget += credit;
-            doWindow(network, routeId, initialId, traceId, authorization, budgetId, credit, padding, 0);
+            doWindow(network, routeId, initialId,  initialSeq, initialAck, maximum, traceId, authorization, budgetId, padding, 0);
         }
 
         private void decodeNetworkIfNecessary(
@@ -2737,8 +2877,8 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         private void doNetworkEndIfNecessary(
-                long traceId,
-                long authorization)
+            long traceId,
+            long authorization)
         {
             if (!AmqpState.replyClosed(state))
             {
@@ -2757,8 +2897,8 @@ public final class AmqpServerFactory implements StreamFactory
         }
 
         private void doNetworkAbortIfNecessary(
-                long traceId,
-                long authorization)
+            long traceId,
+            long authorization)
         {
             if (!AmqpState.replyClosed(state))
             {
@@ -3131,10 +3271,15 @@ public final class AmqpServerFactory implements StreamFactory
                 private long debitorIndex = NO_DEBITOR_INDEX;
 
                 private long initialBudgetId;
-                private int initialBudget;
-                private int initialPadding;
 
-                private int replyBudget;
+                private long initialSeq;
+                private long initialAck;
+                private int initialMax;
+                private int initialPad;
+
+                private long replySeq;
+                private long replyAck;
+                private int replyMax;
 
                 private String name;
                 private long handle;
@@ -3210,7 +3355,7 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                     this.linkCredit = (int) (decodeDeliveryCount + decodeLinkCredit - remoteDeliveryCount);
                     this.remoteDeliveryCount = decodeDeliveryCount;
-                    flushReplyWindow(traceId, authorization);
+                    doApplicationWindow(traceId, authorization);
                 }
 
                 private void onDecodeTransfer(
@@ -3343,8 +3488,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (!AmqpState.initialOpening(state))
                     {
                         this.capabilities = newCapabilities;
-                        doApplicationBegin(traceId, authorization, affinity, senderSettleMode,
-                            receiverSettleMode);
+                        doApplicationBegin(traceId, authorization, affinity, senderSettleMode, receiverSettleMode);
                     }
                 }
 
@@ -3355,6 +3499,9 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpSenderSettleMode senderSettleMode,
                     AmqpReceiverSettleMode receiverSettleMode)
                 {
+                    initialSeq = AmqpServer.this.initialSeq;
+                    initialAck = initialSeq;
+
                     assert state == 0;
                     state = AmqpState.openingInitial(state);
 
@@ -3377,7 +3524,8 @@ public final class AmqpServerFactory implements StreamFactory
                         .receiverSettleMode(r -> r.set(amqpReceiverSettleMode(receiverSettleMode)))
                         .build();
 
-                    doBegin(application, newRouteId, initialId, traceId, authorization, affinity, beginEx);
+                    doBegin(application, newRouteId, initialId, initialSeq, initialAck, initialMax, traceId, authorization,
+                        affinity, beginEx);
                 }
 
                 private void doApplicationData(
@@ -3391,14 +3539,13 @@ public final class AmqpServerFactory implements StreamFactory
                     assert AmqpState.initialOpening(state);
 
                     final int length = payload != null ? payload.sizeof() : 0;
-                    assert reserved >= length + initialPadding;
+                    assert reserved >= length + initialPad : String.format("%d >= %d", reserved, length + initialPad);
 
-                    this.initialBudget -= reserved;
+                    doData(application, newRouteId, initialId, initialSeq, initialAck, initialMax, traceId, authorization, flags,
+                        initialBudgetId, reserved, payload, extension);
 
-                    assert initialBudget >= 0;
-
-                    doData(application, newRouteId, initialId, traceId, authorization, flags, initialBudgetId, reserved, payload,
-                        extension);
+                    initialSeq += reserved;
+                    assert initialSeq <= initialAck + initialMax;
                 }
 
                 private void doApplicationAbort(
@@ -3408,7 +3555,8 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     setInitialClosed();
 
-                    doAbort(application, newRouteId, initialId, traceId, authorization, extension);
+                    doAbort(application, newRouteId, initialId, initialSeq, initialAck, initialMax, traceId, authorization,
+                        extension);
                 }
 
                 private void doApplicationAbortIfNecessary(
@@ -3464,6 +3612,10 @@ public final class AmqpServerFactory implements StreamFactory
                         final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                         onApplicationAbort(abort);
                         break;
+                    case FlushFW.TYPE_ID:
+                        final FlushFW flush = flushRO.wrap(buffer, index, index + length);
+                        onApplicationFlush(flush);
+                        break;
                     case WindowFW.TYPE_ID:
                         final WindowFW window = windowRO.wrap(buffer, index, index + length);
                         onApplicationWindow(window);
@@ -3482,16 +3634,27 @@ public final class AmqpServerFactory implements StreamFactory
                 private void onApplicationWindow(
                     WindowFW window)
                 {
+                    final long sequence = window.sequence();
+                    final long acknowledge = window.acknowledge();
                     final long traceId = window.traceId();
                     final long authorization = window.authorization();
                     final long budgetId = window.budgetId();
-                    final int credit = window.credit();
+                    final int maximum = window.maximum();
                     final int padding = window.padding();
 
                     this.state = AmqpState.openInitial(state);
                     this.initialBudgetId = budgetId;
-                    this.initialBudget += credit;
-                    this.initialPadding = padding;
+
+                    assert acknowledge <= sequence;
+                    assert sequence <= initialSeq;
+                    assert acknowledge >= initialAck;
+                    assert maximum >= initialMax;
+
+                    initialAck = acknowledge;
+                    initialMax = maximum;
+                    initialPad = padding;
+
+                    assert initialAck <= initialSeq;
 
                     if (budgetId != 0L && debitorIndex == NO_DEBITOR_INDEX)
                     {
@@ -3513,11 +3676,11 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     if (AmqpState.replyOpened(state) && role == SENDER)
                     {
-                        this.remoteLinkCredit = (int) (Math.min(bufferPool.slotCapacity(), initialBudget) /
+                        this.remoteLinkCredit = (int) (Math.min(bufferPool.slotCapacity(), initialMax) /
                                                        Math.min(bufferPool.slotCapacity(), decodeMaxFrameSize));
-                        maximum.value = 0;
-                        links.values().forEach(l -> maximum.value += l.remoteLinkCredit);
-                        incomingWindow = maximum.value;
+                        max.value = 0;
+                        links.values().forEach(l -> max.value += l.remoteLinkCredit);
+                        incomingWindow = max.value;
 
                         doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
                             handle, deliveryCount, remoteLinkCredit);
@@ -3562,8 +3725,19 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     state = AmqpState.openReply(state);
 
+                    final long sequence = begin.sequence();
+                    final long acknowledge = begin.acknowledge();
                     final long traceId = begin.traceId();
                     final long authorization = begin.authorization();
+
+                    assert acknowledge <= sequence;
+                    assert sequence >= replySeq;
+                    assert acknowledge <= replyAck;
+
+                    replySeq = sequence;
+                    replyAck = acknowledge;
+
+                    assert replyAck <= replySeq;
 
                     AmqpRole amqpRole = role == RECEIVER ? SENDER : RECEIVER;
                     AmqpSenderSettleMode amqpSenderSettleMode = MIXED;
@@ -3581,11 +3755,14 @@ public final class AmqpServerFactory implements StreamFactory
                         amqpReceiverSettleMode, addressFrom, addressTo, deliveryCount, decodeMaxMessageSize);
 
                     flushInitialWindow(traceId, authorization);
+                    doApplicationWindow(traceId, authorization);
                 }
 
                 private void onApplicationData(
                     DataFW data)
                 {
+                    final long sequence = data.sequence();
+                    final long acknowledge = data.acknowledge();
                     final long traceId = data.traceId();
                     final int reserved = data.reserved();
                     final long authorization = data.authorization();
@@ -3593,10 +3770,17 @@ public final class AmqpServerFactory implements StreamFactory
                     final OctetsFW extension = data.extension();
                     final OctetsFW payload = data.payload();
 
-                    this.replyBudget -= reserved;
+                    assert acknowledge <= sequence;
+                    assert sequence >= replySeq;
+                    assert acknowledge <= replyAck;
+
+                    replySeq = sequence + reserved;
+
+                    assert replyAck <= replySeq;
+
                     replySharedBudget -= reserved;
 
-                    if (replyBudget < 0)
+                    if (replySeq > replyAck + replyMax)
                     {
                         doApplicationReset(traceId, authorization);
                         doNetworkAbort(traceId, authorization);
@@ -3745,6 +3929,36 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                 }
 
+                private void onApplicationFlush(
+                    FlushFW flush)
+                {
+                    final long sequence = flush.sequence();
+                    final long acknowledge = flush.acknowledge();
+                    final long traceId = flush.traceId();
+                    final long authorization = flush.authorization();
+                    final long budgetId = flush.budgetId();
+                    final int reserved = flush.reserved();
+                    final OctetsFW extension = flush.extension();
+
+                    assert acknowledge <= sequence;
+                    assert sequence >= replySeq;
+                    assert acknowledge <= replyAck;
+
+                    replySeq = sequence;
+
+                    assert replyAck <= replySeq;
+
+                    if (replySeq > replyAck + replyMax)
+                    {
+                        doApplicationReset(traceId, authorization);
+                        doNetworkAbort(traceId, authorization);
+                    }
+                    else
+                    {
+                        doNetworkFlush(traceId, authorization, budgetId, reserved, extension);
+                    }
+                }
+
                 private void onApplicationEnd(
                     EndFW end)
                 {
@@ -3778,7 +3992,8 @@ public final class AmqpServerFactory implements StreamFactory
                     capabilities = 0;
                     links.remove(handle);
 
-                    doEnd(application, newRouteId, initialId, traceId, authorization, extension);
+                    doEnd(application, newRouteId, initialId, initialSeq, initialAck, initialMax, traceId, authorization,
+                        extension);
                 }
 
                 private void doApplicationEndIfNecessary(
@@ -3792,7 +4007,7 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                 }
 
-                private void flushReplyWindow(
+                private void doApplicationWindow(
                     long traceId,
                     long authorization)
                 {
@@ -3802,15 +4017,31 @@ public final class AmqpServerFactory implements StreamFactory
                         final int slotCapacity = bufferPool.slotCapacity();
                         final int maxFrameCount = (slotCapacity + maxFrameSize - 1) / maxFrameSize;
                         final int padding = PAYLOAD_HEADER_SIZE + (TRANSFER_HEADER_SIZE * maxFrameCount);
-                        final int newReplyBudget = linkCredit * encodeMaxFrameSize;
-                        final int credit = newReplyBudget - replyBudget;
-                        if (credit > 0)
+                        final int replyBudget = linkCredit * encodeMaxFrameSize;
+                        final int replyPendingAck = Math.max(replyMax - replyBudget, 0);
+                        final int replyAckMax = (int)(replySeq - replyPendingAck);
+                        final int replyBudgetMax = replyBudget + replyPendingAck;
+                        if (replyAckMax > replyAck || replyBudgetMax != replyMax)
                         {
-                            replyBudget += credit;
-                            doWindow(application, newRouteId, replyId, traceId, authorization, replySharedBudgetId, credit,
-                                padding, maxFrameSize);
+                            replyAck = replyAckMax;
+                            assert replyAck <= replySeq;
+                            replyMax = replyBudgetMax;
+                            assert replyMax >= 0;
+                            doWindow(application, newRouteId, replyId, replySeq, replyAck, replyMax, traceId, authorization,
+                                replySharedBudgetId, padding, maxFrameSize);
                         }
                     }
+                }
+
+                private void doApplicationFlush(
+                    long traceId,
+                    long authorization,
+                    long budgetId,
+                    int reserved,
+                    OctetsFW extension)
+                {
+                    doFlush(application, routeId, initialId, initialSeq, initialAck, initialMax, traceId, authorization, budgetId,
+                        reserved, extension);
                 }
 
                 private void doApplicationReset(
@@ -3819,7 +4050,7 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     setReplyClosed();
 
-                    doReset(application, newRouteId, replyId, traceId, authorization, EMPTY_OCTETS);
+                    doReset(application, newRouteId, replyId, replySeq, replyAck, replyMax, traceId, authorization, EMPTY_OCTETS);
                 }
 
                 private void doApplicationResetIfNecessary(
