@@ -191,8 +191,8 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int FLAG_FIN = 1;
     private static final int FLAG_INIT = 2;
     private static final int FLAG_INCOMPLETE = 4;
-    private static final int FLAG_INIT_INCOMPLETE = 6;
-    private static final int FLAG_INIT_AND_FIN = 3;
+    private static final int FLAG_INIT_INCOMPLETE = FLAG_INIT | FLAG_INCOMPLETE;
+    private static final int FLAG_INIT_AND_FIN = FLAG_INIT | FLAG_FIN;
     private static final int FRAME_HEADER_SIZE = 8;
     private static final int SASL_DESCRIPTOR_SIZE = 3;
     private static final int MIN_MAX_FRAME_SIZE = 512;
@@ -3246,6 +3246,7 @@ public final class AmqpServerFactory implements StreamFactory
                     {
                         flags = FLAG_INCOMPLETE;
                     }
+
                     if (!more && !aborted)
                     {
                         flags |= FLAG_FIN;
@@ -3611,7 +3612,11 @@ public final class AmqpServerFactory implements StreamFactory
                         doNetworkAbort(traceId, authorization);
                     }
 
-                    if ((flags & FLAG_INIT_INCOMPLETE) != FLAG_INIT_INCOMPLETE)
+                    if ((flags & FLAG_INIT_INCOMPLETE) == FLAG_INIT_INCOMPLETE)
+                    {
+                        flushReplySharedBudget(traceId);
+                    }
+                    else
                     {
                         nextOutgoingId++;
                         outgoingWindow--;
@@ -3625,10 +3630,6 @@ public final class AmqpServerFactory implements StreamFactory
                         {
                             onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
                         }
-                    }
-                    else
-                    {
-                        flushReplySharedBudget(traceId);
                     }
                 }
 
