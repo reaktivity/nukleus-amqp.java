@@ -1379,6 +1379,17 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.first.fragment.aborted/client",
+        "${server}/send.to.server.when.first.fragment.aborted/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenFirstFragmentAborted() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/connection/open.with.outgoing.locales.negotiated.default/client" })
     public void shouldSendOpenWithOutgoingLocalesNegotiatedDefault() throws Exception
     {
@@ -1524,10 +1535,32 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.middle.fragment.aborted/client",
+        "${server}/send.to.server.when.middle.fragment.aborted/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenMiddleFragmentAborted() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/link/transfer.to.server.with.large.next.incoming.id/client",
         "${server}/send.to.server.with.str8utf8/server" })
     @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
     public void shouldSendToServerWithLargeNextIncomingId() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.server.when.last.fragment.aborted/client",
+        "${server}/send.to.server.when.last.fragment.aborted/server" })
+    @Configure(name = "nukleus.amqp.max.frame.size", value = "1000")
+    public void shouldSendToServerWhenLastFragmentAborted() throws Exception
     {
         k3po.finish();
     }
@@ -1546,8 +1579,28 @@ public class AmqpServerIT
     @Test
     @Specification({
         "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.first.fragment.aborted/client",
+        "${server}/send.to.client.when.first.fragment.aborted/server" })
+    public void shouldSendToClientWhenFirstFragmentAborted() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
         "${client}/connection/reject.incorrect.fields.key.type/client" })
     public void shouldRejectIncorrectFieldsKeyType() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.middle.fragment.aborted/client",
+        "${server}/send.to.client.when.middle.fragment.aborted/server" })
+    public void shouldSendToClientWhenMiddleFragmentAborted() throws Exception
     {
         k3po.finish();
     }
@@ -1558,6 +1611,16 @@ public class AmqpServerIT
         "${client}/link/transfer.to.client.with.application.properties/client",
         "${server}/send.to.client.with.application.properties/server" })
     public void shouldSendToClientWithApplicationProperties() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${client}/link/transfer.to.client.when.last.fragment.aborted/client",
+        "${server}/send.to.client.when.last.fragment.aborted/server" })
+    public void shouldSendToClientWhenLastFragmentAborted() throws Exception
     {
         k3po.finish();
     }
