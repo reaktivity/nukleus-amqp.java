@@ -1149,13 +1149,15 @@ public final class AmqpServerFactory implements StreamFactory
                 if (!sender.fragmented)
                 {
                     assert deliveryId != NO_DELIVERY_ID; // TODO: error
+                    session.remoteDeliveryId = sequenceNext(session.remoteDeliveryId);
+
                     if (transfer.hasAborted() && transfer.aborted() == 1)
                     {
                         progress = limit;
                         server.decoder = decodePlainFrame;
                         break decode;
                     }
-                    session.remoteDeliveryId = sequenceNext(session.remoteDeliveryId);
+
                     if (deliveryId != session.remoteDeliveryId)
                     {
                         server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
