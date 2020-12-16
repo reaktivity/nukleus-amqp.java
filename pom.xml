@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-amqp</artifactId>
-  <version>0.38</version>
+  <version>0.39</version>
   <name>AMQP Nukleus Implementation</name>
   <description>AMQP Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-amqp.java</url>
@@ -53,8 +53,8 @@
 
     <nukleus.plugin.version>0.74</nukleus.plugin.version>
 
-    <nukleus.amqp.spec.version>0.54</nukleus.amqp.spec.version>
-    <reaktor.version>0.146</reaktor.version>
+    <nukleus.amqp.spec.version>0.56</nukleus.amqp.spec.version>
+    <reaktor.version>0.152</reaktor.version>
   </properties>
 
   <dependencies>
@@ -171,10 +171,7 @@
         <artifactId>maven-checkstyle-plugin</artifactId>
         <version>3.1.0</version>
         <configuration>
-          <sourceDirectories>
-            <sourceDirectory>${project.build.sourceDirectory}</sourceDirectory>
-            <sourceDirectory>${project.build.testSourceDirectory}</sourceDirectory>
-          </sourceDirectories>
+          <includeTestSourceDirectory>true</includeTestSourceDirectory>
         </configuration>
         <executions>
           <execution>
@@ -200,7 +197,7 @@
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
-        <version>0.8.5</version>
+        <version>0.8.6</version>
         <configuration>
           <excludes>
             <exclude>org/reaktivity/nukleus/amqp/internal/types/**/*.class</exclude>
@@ -380,6 +377,9 @@
                     <requireReleaseDeps>
                       <message>No Snapshots Allowed!</message>
                     </requireReleaseDeps>
+                    <requireJavaVersion>
+                      <version>[9,10)</version>
+                    </requireJavaVersion>
                   </rules>
                 </configuration>
               </execution>
