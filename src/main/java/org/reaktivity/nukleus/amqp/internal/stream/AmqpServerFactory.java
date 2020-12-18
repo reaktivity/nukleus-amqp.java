@@ -2460,8 +2460,8 @@ public final class AmqpServerFactory implements StreamFactory
             doBegin(network, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, affinity, EMPTY_OCTETS);
             router.setThrottle(replyId, this::onNetwork);
 
-            assert replyBudgetIndex == NO_CREDITOR_INDEX; // TODO: check if needed
-            this.replyBudgetIndex = creditor.acquire(replySharedBudgetId); // TODO: check if needed
+            assert replyBudgetIndex == NO_CREDITOR_INDEX;
+            this.replyBudgetIndex = creditor.acquire(replySharedBudgetId);
         }
 
         private void doNetworkData(
@@ -2555,8 +2555,8 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (decodeSlot != NO_SLOT)
             {
-                final long authorization = 0L; // TODO
-                final long budgetId = 0L; // TODO
+                final long authorization = 0L;
+                final long budgetId = 0L;
 
                 final DirectBuffer buffer = bufferPool.buffer(decodeSlot);
                 final int offset = 0;
