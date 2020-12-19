@@ -402,7 +402,7 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpMessageDecoder amqpMessageDecodeHelper = new AmqpMessageDecoder();
 
     private final MutableInteger minimum = new MutableInteger(Integer.MAX_VALUE);
-    private final MutableInteger max = new MutableInteger(0);
+    private final MutableInteger remoteLinkCreditSum = new MutableInteger(0);
 
     private final Signaler signaler;
 
@@ -2183,7 +2183,8 @@ public final class AmqpServerFactory implements StreamFactory
             assert initialAck <= initialSeq;
 
             doNetworkBegin(traceId, authorization);
-            doNetworkWindow(traceId, authorization, 0, bufferPool.slotCapacity(), 0L);
+            doNetworkWindow(traceId, authorization, 0, bufferPool.slotCapacity(), 0L, 0,
+                bufferPool.slotCapacity());
         }
 
         private void onNetworkData(
@@ -2202,7 +2203,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             assert initialAck <= initialSeq;
 
-            if (initialSeq > initialAck + bufferPool.slotCapacity())
+            if (initialSeq > initialAck + initialMax)
             {
                 doNetworkReset(supplyTraceId.getAsLong(), authorization);
             }
@@ -2252,7 +2253,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             assert initialAck <= initialSeq;
 
-            if (initialSeq > initialAck + bufferPool.slotCapacity())
+            if (initialSeq > initialAck + initialMax)
             {
                 doNetworkReset(supplyTraceId.getAsLong(), authorization);
             }
@@ -2310,6 +2311,10 @@ public final class AmqpServerFactory implements StreamFactory
             assert acknowledge >= replyAck;
             assert maximum >= replyMax;
 
+            final long replyWin = replySeq - replyAck;
+            final long newReplyWin = sequence - acknowledge;
+            final int credit = (int) (replyWin - newReplyWin) + (maximum - replyMax);
+
             state = AmqpState.openReply(state);
             replyAck = acknowledge;
             replyMax = maximum;
@@ -2320,7 +2325,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             if (replyBudgetReserved > 0)
             {
-                final int reservedCredit = Math.min(replyMax, replyBudgetReserved);
+                final int reservedCredit = Math.min(credit, replyBudgetReserved);
                 replyBudgetReserved -= reservedCredit;
             }
 
@@ -2543,11 +2548,23 @@ public final class AmqpServerFactory implements StreamFactory
             long authorization,
             int padding,
             int maximum,
-            long budgetId)
+            long budgetId,
+            int minInitialNoAck,
+            int minInitialMax)
         {
+            final long newInitialAck = Math.max(initialSeq - minInitialNoAck, initialAck);
+
+            if (newInitialAck > initialAck || minInitialMax > initialMax)
+            {
+                initialAck = newInitialAck;
+                assert initialAck <= initialSeq;
+
+                initialMax = minInitialMax;
+            }
+
             state = AmqpState.openInitial(state);
 
-            doWindow(network, routeId, initialId,  initialSeq, initialAck, maximum, traceId, authorization, budgetId, padding, 0);
+            doWindow(network, routeId, initialId, initialSeq, initialAck, maximum, traceId, authorization, budgetId, padding, 0);
         }
 
         private void decodeNetworkIfNecessary(
@@ -2555,8 +2572,8 @@ public final class AmqpServerFactory implements StreamFactory
         {
             if (decodeSlot != NO_SLOT)
             {
-                final long authorization = 0L;
-                final long budgetId = 0L;
+                final long authorization = 0L; // TODO
+                final long budgetId = 0L; // TODO
 
                 final DirectBuffer buffer = bufferPool.buffer(decodeSlot);
                 final int offset = 0;
@@ -2568,7 +2585,7 @@ public final class AmqpServerFactory implements StreamFactory
                 final int initialCredit = reserved - decodeSlotReserved;
                 if (initialCredit > 0)
                 {
-                    doNetworkWindow(traceId, authorization, initialCredit, 0, 0);
+                    doNetworkWindow(traceId, authorization, initialCredit, 0, 0, decodeSlotOffset, initialMax);
                 }
             }
         }
@@ -3678,9 +3695,9 @@ public final class AmqpServerFactory implements StreamFactory
                     {
                         this.remoteLinkCredit = (int) (Math.min(bufferPool.slotCapacity(), initialMax) /
                                                        Math.min(bufferPool.slotCapacity(), decodeMaxFrameSize));
-                        max.value = 0;
-                        links.values().forEach(l -> max.value += l.remoteLinkCredit);
-                        incomingWindow = max.value;
+                        remoteLinkCreditSum.value = 0;
+                        links.values().forEach(l -> remoteLinkCreditSum.value += l.remoteLinkCredit);
+                        incomingWindow = remoteLinkCreditSum.value;
 
                         doEncodeFlow(traceId, authorization, outgoingChannel, nextOutgoingId, nextIncomingId, incomingWindow,
                             handle, deliveryCount, remoteLinkCredit);
