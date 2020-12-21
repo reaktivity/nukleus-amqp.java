@@ -2183,8 +2183,7 @@ public final class AmqpServerFactory implements StreamFactory
             assert initialAck <= initialSeq;
 
             doNetworkBegin(traceId, authorization);
-            doNetworkWindow(traceId, authorization, 0, bufferPool.slotCapacity(), 0L, 0,
-                bufferPool.slotCapacity());
+            doNetworkWindow(traceId, authorization, 0L, 0, bufferPool.slotCapacity());
         }
 
         private void onNetworkData(
@@ -2546,8 +2545,6 @@ public final class AmqpServerFactory implements StreamFactory
         private void doNetworkWindow(
             long traceId,
             long authorization,
-            int padding,
-            int maximum,
             long budgetId,
             int minInitialNoAck,
             int minInitialMax)
@@ -2564,7 +2561,7 @@ public final class AmqpServerFactory implements StreamFactory
 
             state = AmqpState.openInitial(state);
 
-            doWindow(network, routeId, initialId, initialSeq, initialAck, maximum, traceId, authorization, budgetId, padding, 0);
+            doWindow(network, routeId, initialId, initialSeq, initialAck, initialMax, traceId, authorization, budgetId, 0, 0);
         }
 
         private void decodeNetworkIfNecessary(
@@ -2585,7 +2582,7 @@ public final class AmqpServerFactory implements StreamFactory
                 final int initialCredit = reserved - decodeSlotReserved;
                 if (initialCredit > 0)
                 {
-                    doNetworkWindow(traceId, authorization, initialCredit, 0, 0, decodeSlotOffset, initialMax);
+                    doNetworkWindow(traceId, authorization, 0, decodeSlotOffset, initialMax);
                 }
             }
         }
