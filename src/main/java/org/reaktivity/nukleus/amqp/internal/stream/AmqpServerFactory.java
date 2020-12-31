@@ -2551,17 +2551,17 @@ public final class AmqpServerFactory implements StreamFactory
         {
             final long newInitialAck = Math.max(initialSeq - minInitialNoAck, initialAck);
 
-            if (newInitialAck > initialAck || minInitialMax > initialMax)
+            if (newInitialAck > initialAck || minInitialMax > initialMax || !AmqpState.initialOpened(state))
             {
                 initialAck = newInitialAck;
                 assert initialAck <= initialSeq;
 
                 initialMax = minInitialMax;
+
+                state = AmqpState.openInitial(state);
+
+                doWindow(network, routeId, initialId, initialSeq, initialAck, initialMax, traceId, authorization, budgetId, 0, 0);
             }
-
-            state = AmqpState.openInitial(state);
-
-            doWindow(network, routeId, initialId, initialSeq, initialAck, initialMax, traceId, authorization, budgetId, 0, 0);
         }
 
         private void decodeNetworkIfNecessary(
@@ -2578,12 +2578,6 @@ public final class AmqpServerFactory implements StreamFactory
                 final int reserved = decodeSlotReserved;
 
                 decodeNetwork(traceId, authorization, budgetId, reserved, buffer, offset, limit);
-
-                final int initialCredit = reserved - decodeSlotReserved;
-                if (initialCredit > 0)
-                {
-                    doNetworkWindow(traceId, authorization, 0, decodeSlotOffset, initialMax);
-                }
             }
         }
 
@@ -2631,6 +2625,20 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     cleanupStreams(traceId, authorization);
                     doNetworkEndIfNecessary(traceId, authorization);
+                }
+            }
+
+            if (!AmqpState.initialClosed(state))
+            {
+                final int decoded = reserved - decodeSlotReserved;
+
+                final long initialAckMax = Math.min(initialAck + decoded, initialSeq);
+                if (initialAckMax > initialAck)
+                {
+                    initialAck = initialAckMax;
+                    assert initialAck <= initialSeq;
+
+                    doNetworkWindow(traceId, authorization, budgetId, 0, initialMax);
                 }
             }
         }
