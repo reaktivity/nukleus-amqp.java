@@ -191,7 +191,9 @@ public final class AmqpServerFactory implements StreamFactory
 
     private static final int FLAG_FIN = 1;
     private static final int FLAG_INIT = 2;
-    private static final int FLAG_INIT_AND_FIN = 3;
+    private static final int FLAG_INCOMPLETE = 4;
+    private static final int FLAG_INIT_INCOMPLETE = FLAG_INIT | FLAG_INCOMPLETE;
+    private static final int FLAG_INIT_AND_FIN = FLAG_INIT | FLAG_FIN;
     private static final int FRAME_HEADER_SIZE = 8;
     private static final int SASL_DESCRIPTOR_SIZE = 3;
     private static final int MIN_MAX_FRAME_SIZE = 512;
@@ -1200,6 +1202,14 @@ public final class AmqpServerFactory implements StreamFactory
                 {
                     assert deliveryId != NO_DELIVERY_ID; // TODO: error
                     session.remoteDeliveryId = sequenceNext(session.remoteDeliveryId);
+
+                    if (transfer.hasAborted() && transfer.aborted() == 1)
+                    {
+                        progress = limit;
+                        server.decoder = decodePlainFrame;
+                        break decode;
+                    }
+
                     if (deliveryId != session.remoteDeliveryId)
                     {
                         server.onDecodeError(traceId, authorization, INVALID_FIELD, null);
@@ -3405,7 +3415,12 @@ public final class AmqpServerFactory implements StreamFactory
                             this.messageFormat = messageFormat;
                         }
                     }
-                    if (!more)
+                    if (aborted)
+                    {
+                        flags = FLAG_INCOMPLETE;
+                    }
+
+                    if (!more && !aborted)
                     {
                         flags |= FLAG_FIN;
                         deliveryCount = sequenceNext(deliveryCount);
@@ -3451,9 +3466,10 @@ public final class AmqpServerFactory implements StreamFactory
                     }
                     else
                     {
-                        OctetsFW messageFragment =  amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
+                        OctetsFW messageFragment =  aborted ? EMPTY_OCTETS :
+                            amqpMessageDecodeHelper.decodeFragment(this, buffer, offset, limit);
                         size = messageFragment.sizeof();
-                        if (size > 0)
+                        if (size >= 0)
                         {
                             payload = messageFragment;
                         }
@@ -3808,17 +3824,24 @@ public final class AmqpServerFactory implements StreamFactory
                         doNetworkAbort(traceId, authorization);
                     }
 
-                    nextOutgoingId++;
-                    outgoingWindow--;
-
-                    if ((flags & FLAG_INIT) == FLAG_INIT)
+                    if ((flags & FLAG_INIT_INCOMPLETE) == FLAG_INIT_INCOMPLETE)
                     {
-                        deliveryId++;
-                        onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
+                        flushReplySharedBudget(traceId);
                     }
-                    else if (deliveryId != abortedDeliveryId)
+                    else
                     {
-                        onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
+                        nextOutgoingId++;
+                        outgoingWindow--;
+
+                        if ((flags & FLAG_INIT) == FLAG_INIT)
+                        {
+                            deliveryId++;
+                            onApplicationDataInit(traceId, reserved, authorization, flags, extension, payload);
+                        }
+                        else if (deliveryId != abortedDeliveryId)
+                        {
+                            onApplicationDataContOrFin(traceId, reserved, authorization, flags, payload);
+                        }
                     }
                 }
 
@@ -3917,9 +3940,10 @@ public final class AmqpServerFactory implements StreamFactory
                     int flags,
                     OctetsFW payload)
                 {
-                    final boolean more = (flags & FLAG_FIN) == 0;
+                    final boolean aborted = (flags & FLAG_INCOMPLETE) == FLAG_INCOMPLETE;
+                    final boolean more = (flags & FLAG_FIN) == 0 && !aborted;
 
-                    OctetsFW messageFragment = amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
+                    OctetsFW messageFragment = aborted ? EMPTY_OCTETS : amqpMessageHelper.encodeFragment(encodeBodyKind, payload);
 
                     final int performativeSize = transferType.sizeof();
                     final AmqpTransferFW.Builder transferBuilder = amqpTransferRW
@@ -3929,6 +3953,10 @@ public final class AmqpServerFactory implements StreamFactory
                     if (more)
                     {
                         transferBuilder.more(1);
+                    }
+                    if (aborted)
+                    {
+                        transferBuilder.aborted(1);
                     }
 
                     final DirectBuffer fragmentBuffer = messageFragment.buffer();
@@ -3941,7 +3969,7 @@ public final class AmqpServerFactory implements StreamFactory
                     if (frameSize <= encodeMaxFrameSize)
                     {
                         doEncodeTransfer(traceId, authorization, outgoingChannel, transfer,
-                                fragmentBuffer, fragmentOffset, fragmentSize);
+                            fragmentBuffer, fragmentOffset, fragmentSize);
                     }
                     else
                     {
