@@ -1530,7 +1530,7 @@ public final class AmqpServerFactory implements StreamFactory
 
         private int replyPendingAck()
         {
-            return (int)(replySeq - replyAck) + encodeSlotOffset;
+            return (int)(replySeq - replyAck);
         }
 
         private int replyWindow()
