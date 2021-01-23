@@ -53,8 +53,8 @@
 
     <nukleus.plugin.version>0.74</nukleus.plugin.version>
 
-    <nukleus.amqp.spec.version>develop-SNAPSHOT</nukleus.amqp.spec.version>
-    <reaktor.version>develop-SNAPSHOT</reaktor.version>
+    <nukleus.amqp.spec.version>0.57</nukleus.amqp.spec.version>
+    <reaktor.version>0.155</reaktor.version>
   </properties>
 
   <dependencies>
