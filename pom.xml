@@ -58,10 +58,10 @@
 
     <k3po.version>3.1.0</k3po.version>
 
-    <nukleus.plugin.version>0.84</nukleus.plugin.version>
+    <nukleus.plugin.version>0.85</nukleus.plugin.version>
 
-    <nukleus.amqp.spec.version>0.59</nukleus.amqp.spec.version>
-    <reaktor.version>0.161</reaktor.version>
+    <nukleus.amqp.spec.version>0.60</nukleus.amqp.spec.version>
+    <reaktor.version>0.163</reaktor.version>
   </properties>
 
   <dependencies>
