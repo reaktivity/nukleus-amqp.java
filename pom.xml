@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-amqp</artifactId>
-  <version>0.42</version>
+  <version>0.43</version>
   <name>AMQP Nukleus Implementation</name>
   <description>AMQP Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-amqp.java</url>
@@ -58,10 +58,10 @@
 
     <k3po.version>3.1.0</k3po.version>
 
-    <nukleus.plugin.version>0.84</nukleus.plugin.version>
+    <nukleus.plugin.version>0.85</nukleus.plugin.version>
 
-    <nukleus.amqp.spec.version>0.59</nukleus.amqp.spec.version>
-    <reaktor.version>0.161</reaktor.version>
+    <nukleus.amqp.spec.version>0.60</nukleus.amqp.spec.version>
+    <reaktor.version>0.163</reaktor.version>
   </properties>
 
   <dependencies>
@@ -234,6 +234,7 @@
         <artifactId>jacoco-maven-plugin</artifactId>
         <version>0.8.6</version>
         <configuration>
+          <propertyName>jacoco.java.option</propertyName>
           <excludes>
             <exclude>org/reaktivity/nukleus/amqp/internal/types/**/*.class</exclude>
           </excludes>
@@ -265,14 +266,29 @@
         </executions>
       </plugin>
       <plugin>
+        <groupId>org.moditect</groupId>
+        <artifactId>moditect-maven-plugin</artifactId>
+        <version>1.0.0.RC1</version>
+        <configuration>
+          <module>
+            <moduleInfoFile>src/main/moditect/module-info.java</moduleInfoFile>
+          </module>
+        </configuration>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>add-module-info</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>2.22.1</version>
+        <version>3.0.0-M5</version>
         <configuration>
-          <argLine>@{argLine}</argLine>
-          <excludes>
-            <exclude/>
-          </excludes>
+          <argLine>@{jacoco.java.option}</argLine>
         </configuration>
       </plugin>
       <plugin>
@@ -304,9 +320,9 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
-        <version>2.22.1</version>
+        <version>3.0.0-M4</version>
         <configuration>
-          <argLine>@{argLine}</argLine>
+          <argLine>@{jacoco.java.option}</argLine>
         </configuration>
         <executions>
           <execution>
@@ -321,13 +337,6 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <version>2.4</version>
-        <configuration>
-          <archive>
-            <manifestEntries>
-              <Automatic-Module-Name>org.reaktivity.nukleus.amqp</Automatic-Module-Name>
-            </manifestEntries>
-          </archive>
-        </configuration>
         <executions>
           <execution>
             <goals>
@@ -393,6 +402,19 @@
                     <versionRange>[1.1.0,)</versionRange>
                     <goals>
                       <goal>check</goal>
+                    </goals>
+                  </pluginExecutionFilter>
+                  <action>
+                    <ignore></ignore>
+                  </action>
+                </pluginExecution>
+                <pluginExecution>
+                  <pluginExecutionFilter>
+                    <groupId>org.moditect</groupId>
+                    <artifactId>moditect-maven-plugin</artifactId>
+                    <versionRange>[1.0.0.RC1,)</versionRange>
+                    <goals>
+                      <goal>add-module-info</goal>
                     </goals>
                   </pluginExecutionFilter>
                   <action>
