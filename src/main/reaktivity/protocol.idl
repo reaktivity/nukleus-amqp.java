@@ -434,7 +434,7 @@ scope protocol
             SECOND (1)
         }
 
-        enum AmqpTerminusDurability (uint8)
+        enum AmqpTerminusDurability (AmqpUInt)
         {
             NONE (0),
             CONFIGURATION (1),
