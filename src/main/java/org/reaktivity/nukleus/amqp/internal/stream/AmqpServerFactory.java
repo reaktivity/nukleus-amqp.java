@@ -19,7 +19,6 @@ import static java.lang.System.currentTimeMillis;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.asList;
-import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_INCOMING_LOCALES_DEFAULT;
 import static org.reaktivity.nukleus.amqp.internal.stream.AmqpConnectionState.DISCARDING;
@@ -36,7 +35,6 @@ import static org.reaktivity.nukleus.amqp.internal.stream.AmqpTransferFlags.sett
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationKeyFW.KIND_ID;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationKeyFW.KIND_NAME;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.RECEIVE_ONLY;
-import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_AND_RECEIVE;
 import static org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities.SEND_ONLY;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpBeginFW.DEFAULT_VALUE_HANDLE_MAX;
 import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpDescribedType.APPLICATION_PROPERTIES;
@@ -81,10 +79,10 @@ import static org.reaktivity.nukleus.amqp.internal.types.codec.AmqpType.STRING4;
 import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpCapabilities;
 import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpReceiverSettleMode;
 import static org.reaktivity.nukleus.amqp.internal.util.AmqpTypeUtil.amqpSenderSettleMode;
-import static org.reaktivity.nukleus.budget.BudgetCreditor.NO_CREDITOR_INDEX;
-import static org.reaktivity.nukleus.budget.BudgetDebitor.NO_DEBITOR_INDEX;
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
-import static org.reaktivity.nukleus.concurrent.Signaler.NO_CANCEL_ID;
+import static org.reaktivity.reaktor.nukleus.budget.BudgetCreditor.NO_CREDITOR_INDEX;
+import static org.reaktivity.reaktor.nukleus.budget.BudgetDebitor.NO_DEBITOR_INDEX;
+import static org.reaktivity.reaktor.nukleus.buffer.BufferPool.NO_SLOT;
+import static org.reaktivity.reaktor.nukleus.concurrent.Signaler.NO_CANCEL_ID;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -93,7 +91,6 @@ import java.util.Map;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
-import java.util.function.ToIntFunction;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
@@ -103,6 +100,8 @@ import org.agrona.collections.MutableInteger;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.amqp.internal.AmqpConfiguration;
 import org.reaktivity.nukleus.amqp.internal.AmqpNukleus;
+import org.reaktivity.nukleus.amqp.internal.config.AmqpBinding;
+import org.reaktivity.nukleus.amqp.internal.config.AmqpRoute;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpAnnotationKeyFW;
 import org.reaktivity.nukleus.amqp.internal.types.AmqpApplicationPropertyFW;
@@ -160,8 +159,6 @@ import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpULongFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpValueFW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpVariableLength32FW;
 import org.reaktivity.nukleus.amqp.internal.types.codec.AmqpVariableLength8FW;
-import org.reaktivity.nukleus.amqp.internal.types.control.AmqpRouteExFW;
-import org.reaktivity.nukleus.amqp.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.AbortFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.AmqpBeginExFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.AmqpDataExFW;
@@ -172,17 +169,16 @@ import org.reaktivity.nukleus.amqp.internal.types.stream.FlushFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.SignalFW;
 import org.reaktivity.nukleus.amqp.internal.types.stream.WindowFW;
-import org.reaktivity.nukleus.budget.BudgetCreditor;
-import org.reaktivity.nukleus.budget.BudgetDebitor;
-import org.reaktivity.nukleus.buffer.BufferPool;
-import org.reaktivity.nukleus.concurrent.Signaler;
-import org.reaktivity.nukleus.function.MessageConsumer;
-import org.reaktivity.nukleus.function.MessageFunction;
-import org.reaktivity.nukleus.function.MessagePredicate;
-import org.reaktivity.nukleus.route.RouteManager;
-import org.reaktivity.nukleus.stream.StreamFactory;
+import org.reaktivity.reaktor.config.Binding;
+import org.reaktivity.reaktor.nukleus.ElektronContext;
+import org.reaktivity.reaktor.nukleus.budget.BudgetCreditor;
+import org.reaktivity.reaktor.nukleus.budget.BudgetDebitor;
+import org.reaktivity.reaktor.nukleus.buffer.BufferPool;
+import org.reaktivity.reaktor.nukleus.concurrent.Signaler;
+import org.reaktivity.reaktor.nukleus.function.MessageConsumer;
+import org.reaktivity.reaktor.nukleus.stream.StreamFactory;
 
-public final class AmqpServerFactory implements StreamFactory
+public final class AmqpServerFactory implements AmqpStreamFactory
 {
     private static final StringFW[] EMPTY_STRINGFW_ARRAY = new StringFW[0];
     private static final OctetsFW EMPTY_OCTETS = new OctetsFW().wrap(new UnsafeBuffer(), 0, 0);
@@ -210,8 +206,6 @@ public final class AmqpServerFactory implements StreamFactory
     private static final int MIN_IDLE_TIMEOUT = 100;
     private static final long PROTOCOL_HEADER_SASL = 0x414D5150_03010000L;
 
-    private final RouteFW routeRO = new RouteFW();
-
     private final BeginFW beginRO = new BeginFW();
     private final DataFW dataRO = new DataFW();
     private final FlushFW flushRO = new FlushFW();
@@ -228,7 +222,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final FlushFW.Builder flushRW = new FlushFW.Builder();
     private final WindowFW.Builder windowRW = new WindowFW.Builder();
     private final ResetFW.Builder resetRW = new ResetFW.Builder();
-    private final SignalFW.Builder signalRW = new SignalFW.Builder();
 
     private final AmqpBeginExFW amqpBeginExRO = new AmqpBeginExFW();
     private final AmqpDataExFW amqpDataExRO = new AmqpDataExFW();
@@ -253,7 +246,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpEndFW amqpEndRO = new AmqpEndFW();
     private final AmqpCloseFW amqpCloseRO = new AmqpCloseFW();
     private final AmqpSecurityFW amqpSecurityRO = new AmqpSecurityFW();
-    private final AmqpRouteExFW routeExRO = new AmqpRouteExFW();
     private final AmqpHeaderFW headersRO = new AmqpHeaderFW();
     private final AmqpMapFW<AmqpValueFW, AmqpValueFW> deliveryAnnotationsRO =
         new AmqpMapFW<>(new AmqpValueFW(), new AmqpValueFW());
@@ -406,27 +398,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final MutableInteger minimum = new MutableInteger(Integer.MAX_VALUE);
     private final MutableInteger remoteLinkCreditSum = new MutableInteger(0);
 
-    private final Signaler signaler;
-
-    private final RouteManager router;
-    private final MutableDirectBuffer writeBuffer;
-    private final MutableDirectBuffer frameBuffer;
-    private final MutableDirectBuffer extraBuffer;
-    private final MutableDirectBuffer valueBuffer;
-    private final MutableDirectBuffer stringBuffer;
-    private final LongUnaryOperator supplyInitialId;
-    private final LongUnaryOperator supplyReplyId;
-    private final LongSupplier supplyTraceId;
-    private final LongSupplier supplyBudgetId;
-
-    private final Long2ObjectHashMap<MessageConsumer> correlations;
-    private final MessageFunction<RouteFW> wrapRoute = (t, b, i, l) -> routeRO.wrap(b, i, i + l);
-    private final int amqpTypeId;
-
-    private final BufferPool bufferPool;
-    private final BudgetCreditor creditor;
-    private final LongFunction<BudgetDebitor> supplyDebitor;
-
     private final AmqpServerDecoder decodePlainFrame = this::decodePlainFrame;
     private final AmqpServerDecoder decodePerformative = this::decodePerformative;
     private final AmqpServerDecoder decodeSaslFrame = this::decodeSaslFrame;
@@ -444,15 +415,6 @@ public final class AmqpServerFactory implements StreamFactory
     private final AmqpServerDecoder decodeIgnoreAll = this::decodeIgnoreAll;
     private final AmqpServerDecoder decodeIgnoreFrameBody = this::decodeIgnoreFrameBody;
     private final AmqpServerDecoder decodeUnknownType = this::decodeUnknownType;
-
-    private final int outgoingWindow;
-    private final int closeTimeout;
-    private final StringFW containerId;
-    private final long defaultMaxFrameSize;
-    private final long defaultMaxMessageSize;
-    private final long defaultHandleMax;
-    private final long defaultIdleTimeout;
-    private final StringFW[] defaultIncomingLocales;
 
     private final Map<AmqpPerformativeType, AmqpServerDecoder> decodersByPerformativeType;
     {
@@ -480,35 +442,56 @@ public final class AmqpServerFactory implements StreamFactory
         this.decodersBySaslType = decodersBySaslType;
     }
 
+    private final MutableDirectBuffer writeBuffer;
+    private final MutableDirectBuffer frameBuffer;
+    private final MutableDirectBuffer extraBuffer;
+    private final MutableDirectBuffer valueBuffer;
+    private final MutableDirectBuffer stringBuffer;
+
+    private final LongUnaryOperator supplyInitialId;
+    private final LongUnaryOperator supplyReplyId;
+    private final LongSupplier supplyTraceId;
+    private final LongSupplier supplyBudgetId;
+    private final LongFunction<BudgetDebitor> supplyDebitor;
+
+    private final BufferPool bufferPool;
+    private final BudgetCreditor creditor;
+    private final Signaler signaler;
+    private final StreamFactory streamFactory;
+
+    private final Long2ObjectHashMap<AmqpBinding> bindings;
+    private final int amqpTypeId;
+
+    private final int outgoingWindow;
+    private final int closeTimeout;
+    private final StringFW containerId;
+    private final long defaultMaxFrameSize;
+    private final long defaultMaxMessageSize;
+    private final long defaultHandleMax;
+    private final long defaultIdleTimeout;
+    private final StringFW[] defaultIncomingLocales;
+
     public AmqpServerFactory(
         AmqpConfiguration config,
-        RouteManager router,
-        MutableDirectBuffer writeBuffer,
-        BufferPool bufferPool,
-        BudgetCreditor creditor,
-        LongUnaryOperator supplyInitialId,
-        LongUnaryOperator supplyReplyId,
-        LongSupplier supplyBudgetId,
-        LongSupplier supplyTraceId,
-        ToIntFunction<String> supplyTypeId,
-        LongFunction<BudgetDebitor> supplyDebitor,
-        Signaler signaler)
+        ElektronContext context)
     {
-        this.router = requireNonNull(router);
-        this.writeBuffer = requireNonNull(writeBuffer);
+        this.writeBuffer = context.writeBuffer();
         this.frameBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.extraBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.stringBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
         this.valueBuffer = new UnsafeBuffer(new byte[writeBuffer.capacity()]);
-        this.bufferPool = bufferPool;
-        this.creditor = creditor;
-        this.supplyDebitor = supplyDebitor;
-        this.supplyInitialId = requireNonNull(supplyInitialId);
-        this.supplyReplyId = requireNonNull(supplyReplyId);
-        this.supplyBudgetId = requireNonNull(supplyBudgetId);
-        this.supplyTraceId = requireNonNull(supplyTraceId);
-        this.correlations = new Long2ObjectHashMap<>();
-        this.amqpTypeId = supplyTypeId.applyAsInt(AmqpNukleus.NAME);
+        this.bufferPool = context.bufferPool();
+        this.creditor = context.creditor();
+        this.signaler = context.signaler();
+        this.streamFactory = context.streamFactory();
+        this.supplyDebitor = context::supplyDebitor;
+        this.supplyInitialId = context::supplyInitialId;
+        this.supplyReplyId = context::supplyReplyId;
+        this.supplyBudgetId = context::supplyBudgetId;
+        this.supplyTraceId = context::supplyTraceId;
+        this.bindings = new Long2ObjectHashMap<>();
+        this.amqpTypeId = context.supplyTypeId(AmqpNukleus.NAME);
+
         this.containerId = new String8FW(config.containerId());
         this.outgoingWindow = config.outgoingWindow();
         this.defaultMaxFrameSize = config.maxFrameSize();
@@ -517,7 +500,21 @@ public final class AmqpServerFactory implements StreamFactory
         this.defaultIdleTimeout = config.idleTimeout();
         this.defaultIncomingLocales = asStringFWArray(config.incomingLocales());
         this.closeTimeout = config.closeExchangeTimeout();
-        this.signaler = signaler;
+    }
+
+    @Override
+    public void attach(
+        Binding binding)
+    {
+        AmqpBinding amqpBinding = new AmqpBinding(binding);
+        bindings.put(binding.id, amqpBinding);
+    }
+
+    @Override
+    public void detach(
+        long bindingId)
+    {
+        bindings.remove(bindingId);
     }
 
     @Override
@@ -526,79 +523,65 @@ public final class AmqpServerFactory implements StreamFactory
         DirectBuffer buffer,
         int index,
         int length,
-        MessageConsumer throttle)
+        MessageConsumer sender)
     {
         final BeginFW begin = beginRO.wrap(buffer, index, index + length);
-        final long streamId = begin.streamId();
-
-        MessageConsumer newStream = null;
-
-        if ((streamId & 0x0000_0000_0000_0001L) != 0L)
-        {
-            newStream = newInitialStream(begin, throttle);
-        }
-        else
-        {
-            newStream = newReplyStream(begin, throttle);
-        }
-        return newStream;
-    }
-
-    private MessageConsumer newInitialStream(
-        final BeginFW begin,
-        final MessageConsumer sender)
-    {
         final long routeId = begin.routeId();
 
-        final MessagePredicate filter = (t, b, o, l) -> true;
-        final RouteFW route = router.resolve(routeId, begin.authorization(), filter, wrapRoute);
         MessageConsumer newStream = null;
 
-        if (route != null)
+        final AmqpBinding binding = bindings.get(routeId);
+        if (binding != null)
         {
             final long initialId = begin.streamId();
             final long affinity = begin.affinity();
 
             newStream = new AmqpServer(sender, routeId, initialId, affinity)::onNetwork;
         }
+
         return newStream;
     }
 
-    private MessageConsumer newReplyStream(
-        final BeginFW begin,
-        final MessageConsumer sender)
-    {
-        final long replyId = begin.streamId();
-        return correlations.remove(replyId);
-    }
-
-    private RouteFW resolveRoute(
+    private AmqpRoute resolveRoute(
         long routeId,
         long authorization,
         StringFW address,
         AmqpCapabilities capabilities)
     {
-        final MessagePredicate filter = (t, b, o, l) ->
-        {
-            final RouteFW route = routeRO.wrap(b, o, o + l);
-            final OctetsFW extension = route.extension();
-            final AmqpRouteExFW routeEx = extension.get(routeExRO::tryWrap);
+        final AmqpBinding binding = bindings.get(routeId);
+        return binding.resolve(authorization, address.asString(), capabilities);
+    }
 
-            if (routeEx != null && address != null)
-            {
-                final String addressEx = routeEx.address().asString();
-                final AmqpCapabilities routeCapabilities = routeEx.capabilities().get();
+    private MessageConsumer newStream(
+        MessageConsumer sender,
+        long routeId,
+        long replyId,
+        long sequence,
+        long acknowledge,
+        int maximum,
+        long traceId,
+        long authorization,
+        long affinity,
+        Flyweight extension)
+    {
+        final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+            .routeId(routeId)
+            .streamId(replyId)
+            .sequence(sequence)
+            .acknowledge(acknowledge)
+            .maximum(maximum)
+            .traceId(traceId)
+            .authorization(authorization)
+            .affinity(affinity)
+            .extension(extension.buffer(), extension.offset(), extension.sizeof())
+            .build();
 
-                return address.asString().equals(addressEx) &&
-                        (capabilities == SEND_AND_RECEIVE ?
-                                (capabilities.value() & routeCapabilities.value()) == SEND_AND_RECEIVE.value() :
-                                (capabilities.value() & routeCapabilities.value()) != 0);
+        MessageConsumer receiver =
+            streamFactory.newStream(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof(), sender);
 
-            }
+        receiver.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
 
-            return true;
-        };
-        return router.resolve(routeId, authorization, filter, wrapRoute);
+        return receiver;
     }
 
     private void doBegin(
@@ -2472,7 +2455,6 @@ public final class AmqpServerFactory implements StreamFactory
             state = AmqpState.openingReply(state);
 
             doBegin(network, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, affinity, EMPTY_OCTETS);
-            router.setThrottle(replyId, this::onNetwork);
 
             assert replyBudgetIndex == NO_CREDITOR_INDEX;
             this.replyBudgetIndex = creditor.acquire(replySharedBudgetId);
@@ -3118,7 +3100,7 @@ public final class AmqpServerFactory implements StreamFactory
                     AmqpTargetListFW targetList = target != null ? target.targetList() : null;
                     StringFW targetAddress = targetList != null && targetList.hasAddress() ? targetList.address() : null;
 
-                    final RouteFW route;
+                    final AmqpRoute route;
                     switch (role)
                     {
                     case RECEIVER:
@@ -3136,7 +3118,7 @@ public final class AmqpServerFactory implements StreamFactory
                         String addressFrom = sourceAddress != null ? sourceAddress.asString() : null;
                         String addressTo = targetAddress != null ? targetAddress.asString() : null;
 
-                        AmqpServerStream link = new AmqpServerStream(addressFrom, addressTo, role, route);
+                        AmqpServerStream link = new AmqpServerStream(addressFrom, addressTo, role, route.id);
                         AmqpServerStream oldLink = links.put(handle, link);
                         assert oldLink == null;
                         if (sourceList != null)
@@ -3339,16 +3321,15 @@ public final class AmqpServerFactory implements StreamFactory
                     String addressFrom,
                     String addressTo,
                     AmqpRole role,
-                    RouteFW route)
+                    long resolvedId)
                 {
                     this.addressFrom = new String8FW(addressFrom);
                     this.addressTo = new String8FW(addressTo);
                     this.role = role;
                     this.capabilities = 0;
-                    this.newRouteId = route.correlationId();
+                    this.newRouteId = resolvedId;
                     this.initialId = supplyInitialId.applyAsLong(newRouteId);
                     this.replyId = supplyReplyId.applyAsLong(initialId);
-                    this.application = router.supplyReceiver(initialId);
                     this.decodeMaxMessageSize = defaultMaxMessageSize;
                 }
 
@@ -3369,8 +3350,6 @@ public final class AmqpServerFactory implements StreamFactory
 
                     doApplicationBeginIfNecessary(traceId, authorization, affinity, capability, amqpSenderSettleMode,
                         amqpReceiverSettleMode);
-
-                    correlations.put(replyId, this::onApplication);
                 }
 
                 private void onDecodeFlow(
@@ -3543,8 +3522,6 @@ public final class AmqpServerFactory implements StreamFactory
                     assert state == 0;
                     state = AmqpState.openingInitial(state);
 
-                    router.setThrottle(initialId, this::onApplication);
-
                     StringFW address = null;
                     switch (role)
                     {
@@ -3562,8 +3539,8 @@ public final class AmqpServerFactory implements StreamFactory
                         .receiverSettleMode(r -> r.set(amqpReceiverSettleMode(receiverSettleMode)))
                         .build();
 
-                    doBegin(application, newRouteId, initialId, initialSeq, initialAck, initialMax, traceId, authorization,
-                        affinity, beginEx);
+                    application = newStream(this::onApplication, newRouteId, initialId, initialSeq, initialAck, initialMax,
+                            traceId, authorization, affinity, beginEx);
                 }
 
                 private void doApplicationData(
@@ -4029,7 +4006,6 @@ public final class AmqpServerFactory implements StreamFactory
                     final long traceId = abort.traceId();
                     final long authorization = abort.authorization();
 
-                    cleanupCorrelationIfNecessary();
                     cleanup(traceId, authorization);
                 }
 
@@ -4107,8 +4083,6 @@ public final class AmqpServerFactory implements StreamFactory
                     long traceId,
                     long authorization)
                 {
-                    correlations.remove(replyId);
-
                     if (!AmqpState.replyClosed(state))
                     {
                         doApplicationReset(traceId, authorization);
@@ -4154,17 +4128,6 @@ public final class AmqpServerFactory implements StreamFactory
                         signaler.cancel(writeIdleTimeoutId);
                         writeIdleTimeoutId = NO_CANCEL_ID;
                     }
-                }
-
-                private boolean cleanupCorrelationIfNecessary()
-                {
-                    final MessageConsumer correlated = correlations.remove(replyId);
-                    if (correlated != null)
-                    {
-                        router.clearThrottle(replyId);
-                    }
-
-                    return correlated != null;
                 }
             }
         }

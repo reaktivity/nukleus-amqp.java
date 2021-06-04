@@ -15,7 +15,8 @@
  */
 package org.reaktivity.nukleus.amqp.internal;
 
-import org.reaktivity.nukleus.Nukleus;
+import org.reaktivity.reaktor.nukleus.ElektronContext;
+import org.reaktivity.reaktor.nukleus.Nukleus;
 
 public final class AmqpNukleus implements Nukleus
 {
@@ -42,8 +43,9 @@ public final class AmqpNukleus implements Nukleus
     }
 
     @Override
-    public AmqpElektron supplyElektron()
+    public AmqpElektron supplyElektron(
+        ElektronContext context)
     {
-        return new AmqpElektron(config);
+        return new AmqpElektron(config, context);
     }
 }

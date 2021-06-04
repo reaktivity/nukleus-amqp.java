@@ -17,9 +17,9 @@ module org.reaktivity.nukleus.amqp
 {
     requires org.reaktivity.reaktor;
 
-    provides org.reaktivity.nukleus.NukleusFactorySpi
+    provides org.reaktivity.reaktor.nukleus.NukleusFactorySpi
         with org.reaktivity.nukleus.amqp.internal.AmqpNukleusFactorySpi;
 
-    provides org.reaktivity.nukleus.ControllerFactorySpi
-        with org.reaktivity.nukleus.amqp.internal.AmqpControllerFactorySpi;
+    provides org.reaktivity.reaktor.config.ConditionAdapterSpi
+        with org.reaktivity.nukleus.amqp.internal.config.AmqpConditionAdapter;
 }
