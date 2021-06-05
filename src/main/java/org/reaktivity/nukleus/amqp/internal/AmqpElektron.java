@@ -15,39 +15,62 @@
  */
 package org.reaktivity.nukleus.amqp.internal;
 
-import static org.reaktivity.nukleus.route.RouteKind.SERVER;
+import static org.reaktivity.reaktor.config.Role.SERVER;
 
 import java.util.EnumMap;
 import java.util.Map;
 
-import org.reaktivity.nukleus.Elektron;
-import org.reaktivity.nukleus.amqp.internal.stream.AmqpServerFactoryBuilder;
-import org.reaktivity.nukleus.route.RouteKind;
-import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
+import org.reaktivity.nukleus.amqp.internal.stream.AmqpServerFactory;
+import org.reaktivity.nukleus.amqp.internal.stream.AmqpStreamFactory;
+import org.reaktivity.reaktor.config.Binding;
+import org.reaktivity.reaktor.config.Role;
+import org.reaktivity.reaktor.nukleus.Elektron;
+import org.reaktivity.reaktor.nukleus.ElektronContext;
+import org.reaktivity.reaktor.nukleus.stream.StreamFactory;
 
 final class AmqpElektron implements Elektron
 {
-    private final Map<RouteKind, StreamFactoryBuilder> streamFactoryBuilders;
+    private final Map<Role, AmqpStreamFactory> factories;
 
     AmqpElektron(
-        AmqpConfiguration config)
+        AmqpConfiguration config,
+        ElektronContext context)
     {
-        Map<RouteKind, StreamFactoryBuilder> streamFactoryBuilders = new EnumMap<>(RouteKind.class);
-        // TODO: streamFactoryBuilders.put(CLIENT, new AmqpClientFactoryBuilder(config));
-        streamFactoryBuilders.put(SERVER, new AmqpServerFactoryBuilder(config));
-        this.streamFactoryBuilders = streamFactoryBuilders;
+        Map<Role, AmqpStreamFactory> factories = new EnumMap<>(Role.class);
+        // TODO: factories.put(CLIENT, new AmqpClientFactory(config, context));
+        factories.put(SERVER, new AmqpServerFactory(config, context));
+        this.factories = factories;
     }
 
     @Override
-    public StreamFactoryBuilder streamFactoryBuilder(
-        RouteKind kind)
+    public StreamFactory attach(
+        Binding binding)
     {
-        return streamFactoryBuilders.get(kind);
+        AmqpStreamFactory factory = factories.get(binding.kind);
+
+        if (factory != null)
+        {
+            factory.attach(binding);
+        }
+
+        return factory;
+    }
+
+    @Override
+    public void detach(
+        Binding binding)
+    {
+        AmqpStreamFactory factory = factories.get(binding.kind);
+
+        if (factory != null)
+        {
+            factory.detach(binding.id);
+        }
     }
 
     @Override
     public String toString()
     {
-        return String.format("%s %s", getClass().getSimpleName(), streamFactoryBuilders);
+        return String.format("%s %s", getClass().getSimpleName(), factories);
     }
 }

@@ -13,23 +13,21 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.amqp.internal;
+package org.reaktivity.nukleus.amqp.internal.config;
 
-import org.reaktivity.reaktor.nukleus.Configuration;
-import org.reaktivity.reaktor.nukleus.NukleusFactorySpi;
+import org.reaktivity.nukleus.amqp.internal.types.AmqpCapabilities;
+import org.reaktivity.reaktor.config.Condition;
 
-public final class AmqpNukleusFactorySpi implements NukleusFactorySpi
+public final class AmqpCondition extends Condition
 {
-    @Override
-    public String name()
-    {
-        return AmqpNukleus.NAME;
-    }
+    public final String address;
+    public final AmqpCapabilities capabilities;
 
-    @Override
-    public AmqpNukleus create(
-        Configuration config)
+    public AmqpCondition(
+        String address,
+        AmqpCapabilities capabilities)
     {
-        return new AmqpNukleus(new AmqpConfiguration(config));
+        this.address = address;
+        this.capabilities = capabilities;
     }
 }

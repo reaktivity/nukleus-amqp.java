@@ -15,7 +15,14 @@
  */
 package org.reaktivity.nukleus.amqp.internal.stream;
 
-public class AmqpClientFactoryBuilder
-{
+import org.reaktivity.reaktor.config.Binding;
+import org.reaktivity.reaktor.nukleus.stream.StreamFactory;
 
+public interface AmqpStreamFactory extends StreamFactory
+{
+    void attach(
+        Binding binding);
+
+    void detach(
+        long bindingId);
 }

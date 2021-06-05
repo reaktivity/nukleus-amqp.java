@@ -13,23 +13,27 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.amqp.internal;
+package org.reaktivity.nukleus.amqp.internal.config;
 
-import org.reaktivity.reaktor.nukleus.Configuration;
-import org.reaktivity.reaktor.nukleus.NukleusFactorySpi;
+import static java.util.stream.Collectors.toList;
 
-public final class AmqpNukleusFactorySpi implements NukleusFactorySpi
+import java.util.List;
+
+import org.reaktivity.reaktor.config.Options;
+import org.reaktivity.reaktor.config.Route;
+
+public final class AmqpRoute extends Options
 {
-    @Override
-    public String name()
-    {
-        return AmqpNukleus.NAME;
-    }
+    public final long id;
+    public final List<AmqpMatcher> when;
 
-    @Override
-    public AmqpNukleus create(
-        Configuration config)
+    public AmqpRoute(
+        Route route)
     {
-        return new AmqpNukleus(new AmqpConfiguration(config));
+        this.id = route.id;
+        this.when = route.when.stream()
+            .map(AmqpCondition.class::cast)
+            .map(AmqpMatcher::new)
+            .collect(toList());
     }
 }
