@@ -19,7 +19,6 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_CLOSE_EXCHANGE_TIMEOUT;
 import static org.reaktivity.nukleus.amqp.internal.AmqpConfiguration.AMQP_CONTAINER_ID;
-import static org.reaktivity.reaktor.test.ReaktorRule.EXTERNAL_AFFINITY_MASK;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -30,13 +29,13 @@ import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
 import org.reaktivity.reaktor.ReaktorConfiguration;
 import org.reaktivity.reaktor.test.ReaktorRule;
+import org.reaktivity.reaktor.test.annotation.Configuration;
 
 public class AdvisoryIT
 {
     private final K3poRule k3po = new K3poRule()
-        .addScriptRoot("route", "org/reaktivity/specification/nukleus/amqp/control/route")
-        .addScriptRoot("client", "org/reaktivity/specification/amqp/link")
-        .addScriptRoot("server", "org/reaktivity/specification/nukleus/amqp/streams");;
+        .addScriptRoot("net", "org/reaktivity/specification/nukleus/amqp/streams/network/link")
+        .addScriptRoot("app", "org/reaktivity/specification/nukleus/amqp/streams/application");
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
@@ -45,21 +44,21 @@ public class AdvisoryIT
         .commandBufferCapacity(2048)
         .responseBufferCapacity(2048)
         .counterValuesBufferCapacity(8192)
-        .nukleus("amqp"::equals)
-        .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
         .configure(AMQP_CONTAINER_ID, "server")
         .configure(ReaktorConfiguration.REAKTOR_DRAIN_ON_CLOSE, false)
         .configure(AMQP_CLOSE_EXCHANGE_TIMEOUT, 500)
+        .configurationRoot("org/reaktivity/specification/nukleus/amqp/config")
+        .external("app#0")
         .clean();
 
     @Rule
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
 
     @Test
+    @Configuration("server.json")
     @Specification({
-        "${route}/server/controller",
-        "${client}/server.sent.flush/client",
-        "${server}/server.sent.flush/server" })
+        "${net}/server.sent.flush/client",
+        "${app}/server.sent.flush/server" })
     public void shouldReceiveServerSentFlush() throws Exception
     {
         k3po.finish();
